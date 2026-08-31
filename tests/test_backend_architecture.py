@@ -66,6 +66,19 @@ def test_routes_expose_health_status_and_smoke_test(tmp_path: Path) -> None:
         },
     )
     assert cors_response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    hosted_cors_response = client.options(
+        "/api/v1/scans",
+        headers={
+            "Origin": "https://aegis-lab-malware.endava-8536.chatgpt.site",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-aegis-scan",
+        },
+    )
+    assert hosted_cors_response.status_code == 200
+    assert (
+        hosted_cors_response.headers["access-control-allow-origin"]
+        == "https://aegis-lab-malware.endava-8536.chatgpt.site"
+    )
     status_response = client.get("/api/v1/datasets/ember2018/status")
     assert status_response.status_code == 200
     assert status_response.json()["ready"] is True

@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ArrowUpRight, Binary, Box, Check, ChevronRight, CircleDot, Database, FlaskConical, Gauge, GitBranch, HardDrive, Menu, RefreshCw, ScanSearch, ServerCog, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
+import { Activity, ArrowUpRight, Binary, Check, ChevronRight, CircleDot, Database, FlaskConical, Gauge, GitBranch, HardDrive, Menu, RefreshCw, ScanSearch, ServerCog, ShieldAlert, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -10,6 +10,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ScannerWorkspace } from '@/components/scanner-workspace';
 
 type DatasetStatus = { name: string; raw_directory: string; archive_available: boolean; manifest_available: boolean; extracted_files_available: boolean; ready: boolean };
 type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number; true_negatives: number; false_positives: number; false_negatives: number; true_positives: number };
@@ -18,7 +19,7 @@ type RobustnessScenario = { scenario: string; intensity: number; malware_samples
 type RobustnessStatus = { available: boolean; metrics: { malware_samples: number; baseline_detection_rate: number; scenarios: RobustnessScenario[]; worst_case: RobustnessScenario } | null };
 type ComparisonStatus = { available: boolean; metrics: { baseline: { metrics: { test: MetricSet }; robustness: { worst_case: RobustnessScenario } }; hardened: { metrics: { test: MetricSet }; robustness: { worst_case: RobustnessScenario } }; deltas: { clean_accuracy: number; clean_roc_auc: number; worst_detection_rate: number; worst_evasion_rate: number } } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
-type View = 'overview' | 'datasets' | 'experiments' | 'robustness' | 'runs';
+type View = 'scan' | 'overview' | 'datasets' | 'experiments' | 'robustness' | 'runs';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
 const stages = [
@@ -27,8 +28,9 @@ const stages = [
   { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'complete' },
   { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'complete' },
   { label: 'Robust retraining', detail: 'Augmented training & comparison', state: 'complete' },
+  { label: 'File scanning', detail: 'Safe PE extraction, inference & history', state: 'complete' },
 ];
-const viewLabels: Record<View, string> = { overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
+const viewLabels: Record<View, string> = { scan: 'Scan', overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
 
 export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
@@ -38,7 +40,7 @@ export default function Home() {
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [action, setAction] = useState<'verify' | 'smoke-test' | null>(null);
   const [notice, setNotice] = useState('Ready for the baseline model workflow.');
-  const [activeView, setActiveView] = useState<View>('overview');
+  const [activeView, setActiveView] = useState<View>('scan');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const refreshStatus = useCallback(async () => {
@@ -61,14 +63,17 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => { void refreshStatus(); }, [refreshStatus]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshStatus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshStatus]);
 
   async function runAction(nextAction: 'verify' | 'smoke-test') {
     setAction(nextAction);
     try {
       const response = await fetch(`${apiUrl}/api/v1/datasets/ember2018/${nextAction}`, { method: 'POST' });
       if (!response.ok) throw new Error('The operation could not be completed.');
-      const result = await response.json();
+      const result = (await response.json()) as { feature_count: number };
       setNotice(nextAction === 'verify' ? 'Dataset provenance and extracted files verified.' : `Real sample vectorized: ${result.feature_count.toLocaleString()} finite features.`);
       await refreshStatus();
     } catch {
@@ -87,6 +92,7 @@ export default function Home() {
         <aside className="hidden border-r border-white/8 bg-sidebar/75 px-5 py-6 backdrop-blur-xl lg:flex lg:flex-col">
           <Brand />
           <nav className="mt-10 space-y-1" aria-label="Main navigation">
+            <NavItem icon={ShieldAlert} label="Scan" active={activeView === 'scan'} onSelect={() => selectView('scan')} />
             <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
             <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
             <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
@@ -95,7 +101,7 @@ export default function Home() {
           </nav>
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
-            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">100%</span><span className="text-xs text-slate-400">5 of 5 phases</span></div>
+            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">100%</span><span className="text-xs text-slate-400">6 of 6 phases</span></div>
             <Progress value={100} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
           </div>
         </aside>
@@ -115,6 +121,7 @@ export default function Home() {
             <SheetContent side="left" className="w-[290px] border-white/10 bg-sidebar/95 p-5 backdrop-blur-xl">
               <SheetHeader className="px-0 pt-1"><SheetTitle><Brand /></SheetTitle><SheetDescription className="pt-3 text-slate-500">Navigate the research workspace</SheetDescription></SheetHeader>
               <nav className="mt-3 space-y-1" aria-label="Mobile navigation">
+                <NavItem icon={ShieldAlert} label="Scan" active={activeView === 'scan'} onSelect={() => selectView('scan')} />
                 <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
                 <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
                 <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
@@ -123,6 +130,10 @@ export default function Home() {
               </nav>
             </SheetContent>
           </Sheet>
+
+          {activeView === 'scan' && <WorkspaceView title="Scan suspicious file" description="Upload a Windows PE file for safe static analysis with the hardened malware model." badge="SCAN / 01">
+            <ScannerWorkspace apiUrl={apiUrl} connection={connection} />
+          </WorkspaceView>}
 
           {activeView === 'overview' && <div className="relative z-10 px-5 py-8 sm:px-8 xl:px-12 xl:py-10">
             <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
@@ -162,7 +173,7 @@ export default function Home() {
 
             <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-emerald-300/10 text-emerald-200"><Check className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Scientific MVP complete</p><p className="text-xs text-slate-500">Baseline, robustness study, and hardened comparison are reproducible</p></div></div>
-              <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100">View implementation path <ArrowUpRight /></Button>
+              <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100" onClick={() => selectView('scan')}>Scan a suspicious file <ArrowUpRight /></Button>
             </div>
           </div>}
 

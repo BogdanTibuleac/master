@@ -10,6 +10,7 @@ it does not create, execute, or distribute malware.
 2. Evaluate standard classification metrics.
 3. Apply safe, simulated feature perturbations to the held-out malware samples.
 4. Measure the robustness impact and retrain with augmented data.
+5. Scan uploaded Windows PE files with the hardened model without executing or retaining them.
 
 RabbitMQ and Azure are planned after the local scientific workflow is validated.
 
@@ -84,8 +85,30 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` to view dataset readiness, run verification and smoke
-checks, and follow the experiment development path.
+Open `http://localhost:3000` to scan a suspicious PE file, inspect its malware
+probability and static evidence, review scan history, and explore the supporting
+dataset and robustness experiments.
+
+## Static file scanning
+
+The `Scan` workspace accepts `.exe`, `.dll`, `.sys`, `.scr`, `.cpl`, and `.ocx`
+files up to 25 MB. The API validates the DOS and PE signatures, parses the file in
+memory, extracts the EMBER feature-version-2 vector, and scores all 2,381 values
+with `artifacts/robust_lightgbm/model.txt`. It never launches the uploaded file.
+
+Completed scan metadata is stored under `data/scans/`; the uploaded binary is not
+written there or retained after scoring. Each result includes the SHA-256, model
+probability and threshold, verdict, grouped model contributions, static indicators,
+PE type, architecture, section/import counts, and scan duration.
+
+The API exposes:
+
+- `POST /api/v1/scans` — multipart PE upload and synchronous static scan.
+- `GET /api/v1/scans` — recent metadata-only scan history.
+- `GET /api/v1/scans/{scan_id}` — one persisted scan result.
+
+Static ML is a triage signal rather than proof that a file is safe or malicious.
+Signature reputation and isolated behavioral sandboxing remain later defense layers.
 
 ## Baseline training
 
@@ -141,6 +164,7 @@ robustness suite compares baseline and hardened detection under perturbation.
 | `feature/baseline-model` | Training and standard evaluation |
 | `feature/robustness-evaluation` | Safe simulated perturbations and robustness metrics |
 | `feature/adversarial-training` | Augmented training and comparison |
+| `feature/file-scanning` | Safe PE upload, static inference, explanations, and scan history |
 | `feature/rabbitmq-orchestration` | Optional distributed task workflow |
 | `feature/azure-integration` | Optional cloud storage and execution support |
 
