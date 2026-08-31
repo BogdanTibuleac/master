@@ -100,6 +100,14 @@ The run uses validation-based early stopping and writes a native LightGBM model 
 accuracy, precision, recall, F1, ROC-AUC, average precision, and confusion-matrix
 counts to `artifacts/<experiment_name>/`.
 
+For a fast first run on real EMBER2018 records, prepare balanced streamed partitions
+and train them with:
+
+```powershell
+malware-data prepare-sample --raw-dir data/raw --output-dir data/processed/sample
+malware-train --config configs/ember2018-sample.yaml --artifacts-dir artifacts
+```
+
 ## Branch delivery plan
 
 | Branch | Purpose |
