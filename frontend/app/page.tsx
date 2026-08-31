@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type DatasetStatus = { name: string; raw_directory: string; archive_available: boolean; manifest_available: boolean; extracted_files_available: boolean; ready: boolean };
-type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number };
+type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number; true_negatives: number; false_positives: number; false_negatives: number; true_positives: number };
 type BaselineStatus = { available: boolean; metrics: { test: MetricSet; validation: MetricSet; features: number; best_iteration: number; created_at_utc: string } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
 
@@ -113,6 +114,8 @@ export default function Home() {
               <MetricCard icon={Activity} eyebrow="Baseline ROC-AUC" value={baseline?.available ? formatScore(baseline.metrics?.test.roc_auc) : 'Pending'} detail={baseline?.available ? `${baseline.metrics?.test.samples.toLocaleString()} held-out samples` : 'Run malware-train to populate'} tone="cyan" />
             </div>
 
+            <BaselineResults baseline={baseline} />
+
             <div className="mt-4 grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
               <Card className="glass-card min-h-[350px]">
                 <CardHeader className="border-b border-white/8 pb-4"><CardTitle className="flex items-center gap-2 text-white"><Activity className="size-4 text-cyan-300" />Development path</CardTitle><CardDescription>Fastest route to a defensible local MVP</CardDescription><CardAction><Badge variant="outline" className="border-white/10 text-slate-400">Active</Badge></CardAction></CardHeader>
@@ -165,6 +168,52 @@ function RuntimeRow({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between border-b border-white/6 pb-3 text-sm last:border-0"><span className="text-slate-500">{label}</span><span className="font-mono text-xs text-slate-200">{value}</span></div>;
 }
 
+function BaselineResults({ baseline }: { baseline: BaselineStatus | null }) {
+  const metrics = baseline?.metrics?.test;
+  return <Card className="glass-card mt-4">
+    <CardHeader className="border-b border-white/8 pb-4">
+      <CardTitle className="flex items-center gap-2 text-white"><FlaskConical className="size-4 text-violet-300" />Baseline test results</CardTitle>
+      <CardDescription>{metrics ? `LightGBM · ${metrics.samples.toLocaleString()} real EMBER2018 held-out records` : 'Results appear automatically after the first training run'}</CardDescription>
+      <CardAction><Badge variant="outline" className={metrics ? 'border-emerald-300/20 text-emerald-300' : 'border-white/10 text-slate-500'}>{metrics ? 'Real run' : 'Pending'}</Badge></CardAction>
+    </CardHeader>
+    <CardContent className="pt-5">
+      {metrics ? <div className="grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <ResultMetric label="Accuracy" value={formatPercent(metrics.accuracy)} />
+          <ResultMetric label="Precision" value={formatPercent(metrics.precision)} />
+          <ResultMetric label="Recall" value={formatPercent(metrics.recall)} highlight />
+          <ResultMetric label="F1 score" value={formatPercent(metrics.f1)} />
+          <ResultMetric label="ROC-AUC" value={formatScore(metrics.roc_auc)} highlight />
+          <ResultMetric label="Avg. precision" value={formatPercent(metrics.average_precision)} />
+        </div>
+        <div className="overflow-hidden rounded-xl border border-white/8 bg-black/15">
+          <Table>
+            <TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Outcome</TableHead><TableHead className="text-right text-slate-500">Samples</TableHead></TableRow></TableHeader>
+            <TableBody>
+              <ConfusionRow label="True positives" value={metrics.true_positives} tone="text-emerald-300" />
+              <ConfusionRow label="True negatives" value={metrics.true_negatives} tone="text-cyan-300" />
+              <ConfusionRow label="False positives" value={metrics.false_positives} tone="text-amber-300" />
+              <ConfusionRow label="False negatives" value={metrics.false_negatives} tone="text-rose-300" />
+            </TableBody>
+          </Table>
+        </div>
+      </div> : <div className="rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Prepare the EMBER partitions and run the baseline model to populate this panel.</div>}
+    </CardContent>
+  </Card>;
+}
+
+function ResultMetric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+  return <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 font-mono text-xl font-semibold ${highlight ? 'text-cyan-200' : 'text-white'}`}>{value}</p></div>;
+}
+
+function ConfusionRow({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return <TableRow className="border-white/6 hover:bg-white/[0.025]"><TableCell className="text-slate-400">{label}</TableCell><TableCell className={`text-right font-mono ${tone}`}>{value.toLocaleString()}</TableCell></TableRow>;
+}
+
 function formatScore(value?: number) {
   return value === undefined ? '—' : value.toFixed(3);
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
 }
