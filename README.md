@@ -40,7 +40,13 @@ the resulting partitions through your experiment workflow before model training.
 
 ## Repository layout
 
-- `src/malware_robustness/`: application package.
+- `src/malware_robustness/api/`: FastAPI application factory and dependency wiring.
+- `src/malware_robustness/routes/`: versioned HTTP endpoints only.
+- `src/malware_robustness/services/`: transport-independent application workflows.
+- `src/malware_robustness/repositories/`: dataset and future persistence adapters.
+- `src/malware_robustness/domain/`: shared business entities and repository contracts.
+- `src/malware_robustness/schemas/`: validated HTTP response contracts.
+- `src/malware_robustness/core/`: runtime settings and cross-cutting infrastructure.
 - `configs/`: versioned experiment configuration.
 - `data/`: local data only; excluded from Git.
 - `artifacts/`: generated models, metrics, and figures; excluded from Git.
@@ -56,6 +62,16 @@ pip install -e '.[dev]'
 pytest
 ruff check .
 ```
+
+Start the local backend with:
+
+```powershell
+malware-api
+```
+
+The API is available at `http://127.0.0.1:8000`, with interactive documentation
+at `/docs`. Routes depend on services, services depend on repository contracts,
+and only repository implementations access dataset files.
 
 ## Branch delivery plan
 

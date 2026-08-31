@@ -9,11 +9,13 @@ description = "Reproducible evaluation of static malware classifier robustness."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115,<1",
     "lightgbm>=4.5,<5",
     "numpy>=1.26,<3",
     "pandas>=2.2,<3",
     "pyyaml>=6.0,<7",
     "scikit-learn>=1.5,<2",
+    "uvicorn>=0.30,<1",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +23,7 @@ dev = ["pytest>=8.3,<9", "ruff>=0.6,<1"]
 
 [project.scripts]
 malware-data = "malware_robustness.ember2018:main"
+malware-api = "malware_robustness.api.app:run"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
