@@ -12,7 +12,8 @@ it does not create, execute, or distribute malware.
 4. Measure the robustness impact and retrain with augmented data.
 5. Scan uploaded Windows PE files with the hardened model without executing or retaining them.
 
-RabbitMQ and Azure are planned after the local scientific workflow is validated.
+RabbitMQ remains a later orchestration option. The repository includes a deployable Azure
+foundation for the synchronous API, but no cloud deployment is performed automatically.
 
 ## EMBER2018 dataset
 
@@ -49,6 +50,9 @@ the resulting partitions through your experiment workflow before model training.
 - `src/malware_robustness/schemas/`: validated HTTP response contracts.
 - `src/malware_robustness/core/`: runtime settings and cross-cutting infrastructure.
 - `configs/`: versioned experiment configuration.
+- `deploy/env/`: non-secret local and Azure environment examples.
+- `infra/`: Azure Container Apps, managed identity, ACR, and Blob Storage Bicep.
+- `scripts/`: local deployment-foundation validation and container smoke tests.
 - `data/`: local data only; excluded from Git.
 - `artifacts/`: generated models, metrics, and figures; excluded from Git.
 - `tests/`: automated tests.
@@ -73,6 +77,10 @@ malware-api
 The API is available at `http://127.0.0.1:8000`, with interactive documentation
 at `/docs`. Routes depend on services, services depend on repository contracts,
 and only repository implementations access dataset files.
+
+The process-only liveness endpoint is `/health`. The `/ready` endpoint returns HTTP 200
+only when both the hardened model and scan-metadata storage are available; missing local
+artifacts therefore produce an intentional HTTP 503 readiness response.
 
 ## Frontend dashboard
 
@@ -109,6 +117,26 @@ The API exposes:
 
 Static ML is a triage signal rather than proof that a file is safe or malicious.
 Signature reputation and isolated behavioral sandboxing remain later defense layers.
+
+## Production container and Azure foundation
+
+`Dockerfile` builds a locked, non-root production image containing the Azure runtime
+extra. Local filesystem storage remains the default. Azure mode uses managed identity to
+read versioned model artifacts and write metadata-only scan records to separate private
+Blob containers; it does not use account keys, connection strings, or SAS tokens.
+
+Validate the Python, Bicep, and container configuration locally with:
+
+```powershell
+.\scripts\validate-deployment.ps1
+.\scripts\smoke-container.ps1
+```
+
+Use `-SkipDocker` when a Docker daemon is unavailable. See
+[`docs/azure-deployment.md`](docs/azure-deployment.md) for architecture, security
+boundaries, two-phase provisioning, model publication, verification, rollback, and
+incident procedures. The commands in that runbook are operator-invoked; this repository
+does not deploy cloud resources by itself.
 
 ## Baseline training
 

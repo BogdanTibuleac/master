@@ -1,4 +1,7 @@
 .venv/
+.uv-cache/
+.azure-config/
+.cache/
 __pycache__/
 *.py[cod]
 .pytest_cache/

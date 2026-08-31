@@ -31,6 +31,14 @@ class FakeModelRepository:
             feature_contributions=contributions,
         )
 
+    def is_ready(self) -> bool:
+        return True
+
+
+class UnavailableModelRepository(FakeModelRepository):
+    def is_ready(self) -> bool:
+        return False
+
 
 def _minimal_pe() -> bytes:
     """Build a small parseable PE32 image without executing or downloading a fixture."""
@@ -122,6 +130,13 @@ def test_scan_routes_create_list_and_retrieve_results(tmp_path: Path) -> None:
     application.dependency_overrides[get_scan_service] = lambda: service
     client = TestClient(application)
 
+    readiness = client.get("/ready")
+    assert readiness.status_code == 200
+    assert readiness.json() == {
+        "status": "ready",
+        "checks": {"model_artifacts": True, "scan_metadata": True},
+    }
+
     created = client.post(
         "/api/v1/scans",
         headers={"X-Aegis-Scan": "static-pe-v1"},
@@ -152,3 +167,23 @@ def test_scan_route_requires_the_preflighted_application_header(tmp_path: Path) 
     )
 
     assert response.status_code == 403
+
+
+def test_readiness_rejects_traffic_when_the_model_is_unavailable(tmp_path: Path) -> None:
+    application = create_app()
+    service = ScanService(
+        ScanRepository(tmp_path / "scans"),
+        UnavailableModelRepository(),  # type: ignore[arg-type]
+        PEFeatureExtractor(),
+        maximum_file_size=1024 * 1024,
+    )
+    application.dependency_overrides[get_scan_service] = lambda: service
+    client = TestClient(application)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": {"model_artifacts": False, "scan_metadata": True},
+    }

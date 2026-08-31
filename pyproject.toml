@@ -22,6 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+azure = ["azure-identity>=1.19,<2", "azure-storage-blob>=12.24,<13"]
 dev = ["httpx2>=2,<3", "pytest>=8.3,<9", "ruff>=0.6,<1"]
 
 [project.scripts]
