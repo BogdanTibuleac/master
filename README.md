@@ -13,6 +13,14 @@ it does not create, execute, or distribute malware.
 
 RabbitMQ and Azure are planned after the local scientific workflow is validated.
 
+## Data contract
+
+The local pipeline accepts CSV and Parquet feature tables. Each table must have a
+binary `label` column (0 for benign, 1 for malware) and one or more numeric feature
+columns, with no missing values. `split_feature_table` makes deterministic,
+stratified train/validation/test partitions from a single prepared table; persist
+the resulting partitions through your experiment workflow before model training.
+
 ## Repository layout
 
 - `src/malware_robustness/`: application package.
