@@ -95,9 +95,17 @@ The `Scan` workspace accepts `.exe`, `.dll`, `.sys`, `.scr`, `.cpl`, and `.ocx`
 files up to 25 MB. The API validates the DOS and PE signatures, parses the file in
 memory, extracts the EMBER feature-version-2 vector, and scores all 2,381 values
 with `artifacts/robust_lightgbm/model.txt`. It never launches the uploaded file.
+The upload boundary accepts exactly one file, bounds the complete multipart body,
+limits concurrent scans, and rejects pathological PE structures before feature
+extraction. Browser scan POSTs must come from an explicitly configured CORS origin
+and include `X-Aegis-Scan: static-pe-v1`; clients without an `Origin` header remain
+supported for local CLI and server-to-server use.
+`MALWARE_MAX_UPLOAD_BYTES` can set a 1-byte to 100-MB file limit, while
+`MALWARE_MAX_CONCURRENT_SCANS` can set 1 to 32 in-flight scans (default: 4).
 
 Completed scan metadata is stored under `data/scans/`; the uploaded binary is not
-written there or retained after scoring. Each result includes the SHA-256, model
+written there or retained after scoring. Metadata files are committed with an
+atomic replace so readers never observe partial history entries. Each result includes the SHA-256, model
 probability and threshold, verdict, grouped model contributions, static indicators,
 PE type, architecture, section/import counts, and scan duration.
 
@@ -109,6 +117,8 @@ The API exposes:
 
 Static ML is a triage signal rather than proof that a file is safe or malicious.
 Signature reputation and isolated behavioral sandboxing remain later defense layers.
+The detailed upload trust boundaries, controls, residual risks, and deployment
+recommendations are recorded in `docs/pe-upload-threat-model.md`.
 
 ## Baseline training
 
