@@ -12,12 +12,19 @@ dependencies = [
     "lightgbm>=4.5,<5",
     "numpy>=1.26,<3",
     "pandas>=2.2,<3",
+    "pyarrow>=17",
     "pyyaml>=6.0,<7",
     "scikit-learn>=1.5,<2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<9", "ruff>=0.6,<1"]
+ember2024 = [
+    "thrember @ git+https://github.com/FutureComputing4AI/EMBER2024.git@0ef753e81d98bf209f71b03cd331dfc190b5b54d",
+]
+
+[project.scripts]
+malware-data = "malware_robustness.ember2024:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

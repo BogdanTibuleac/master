@@ -21,6 +21,24 @@ columns, with no missing values. `split_feature_table` makes deterministic,
 stratified train/validation/test partitions from a single prepared table; persist
 the resulting partitions through your experiment workflow before model training.
 
+## EMBER2024 MVP dataset
+
+The first end-to-end experiment uses the official EMBER2024 `.NET` train and test
+subsets plus the evasive-malware challenge set. Install and acquire them with:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+malware-data download --dataset-dir data/raw/ember2024-dotnet
+malware-data verify --dataset-dir data/raw/ember2024-dotnet
+python -m pip install -e ".[ember2024]"
+malware-data vectorize --dataset-dir data/raw/ember2024-dotnet
+```
+
+The download command is idempotent and records file sizes and SHA-256 checksums in
+`data/raw/ember2024-dotnet/manifest.json`. Dataset content remains excluded from Git.
+
 ## Repository layout
 
 - `src/malware_robustness/`: application package.
