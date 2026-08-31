@@ -10,9 +10,30 @@ it does not create, execute, or distribute malware.
 2. Evaluate standard classification metrics.
 3. Apply safe, simulated feature perturbations to the held-out malware samples.
 4. Measure the robustness impact and retrain with augmented data.
-5. Scan uploaded Windows PE files with the hardened model without executing or retaining them.
+5. Scan quarantined Windows PE files through a durable, isolated static-analysis workflow.
 
-RabbitMQ and Azure are planned after the local scientific workflow is validated.
+The runtime now includes optional PostgreSQL, RabbitMQ, and Azure Blob adapters. The default
+developer profile remains local and requires no cloud account.
+
+## Hostile-content runtime
+
+The asynchronous path is intentionally split by trust boundary:
+
+- The FastAPI edge creates tenant-scoped workflows, issues short-lived upload capabilities,
+  seals exact object generations, and returns metadata/results. It does not parse content.
+- PostgreSQL owns workflow state, append-only events, leases, fencing tokens, and the
+  transactional outbox.
+- RabbitMQ carries a strict, versioned metadata-only task; file bytes, filenames, URLs,
+  extracted strings, and feature vectors are rejected from that contract.
+- A disposable extractor verifies the sealed size and SHA-256, then emits an exact 2,381-value
+  EMBER-v2 envelope plus bounded semantic evidence. Its container profile is networkless,
+  non-root, read-only, capability-free, and resource bounded.
+- The trusted decision runtime validates the untrusted envelope, runs native LightGBM margin
+  scoring, calibration and policy, then publishes a canonical content-hashed result manifest.
+
+The local auto-processing profile runs the extractor in a fresh child process so the entire
+flow can be demonstrated without RabbitMQ. It is a development convenience, not a replacement
+for the digest-pinned container or the recommended production microVM boundary.
 
 ## EMBER2018 dataset
 
@@ -64,9 +85,11 @@ pytest
 ruff check .
 ```
 
-Start the local backend with:
+After creating `artifacts/robust_lightgbm/model.txt` with `malware-harden`, start the complete
+local asynchronous flow with:
 
 ```powershell
+$env:MALWARE_RUNTIME_AUTO_PROCESS = "true"
 malware-api
 ```
 
@@ -92,28 +115,52 @@ dataset and robustness experiments.
 ## Static file scanning
 
 The `Scan` workspace accepts `.exe`, `.dll`, `.sys`, `.scr`, `.cpl`, and `.ocx`
-files up to 25 MB. The API validates the DOS and PE signatures, parses the file in
-memory, extracts the EMBER feature-version-2 vector, and scores all 2,381 values
-with `artifacts/robust_lightgbm/model.txt`. It never launches the uploaded file.
-The upload boundary accepts exactly one file, bounds the complete multipart body,
-limits concurrent scans, and rejects pathological PE structures before feature
-extraction. Browser scan POSTs must come from an explicitly configured CORS origin
-and include `X-Aegis-Scan: static-pe-v1`; clients without an `Origin` header remain
-supported for local CLI and server-to-server use.
+files up to 25 MB. With `X-Aegis-Scan: hostile-content-v1`, the browser first creates a
+workflow, uploads to a write-once quarantine capability, and seals the object by size and
+SHA-256. Only the disposable extraction boundary parses it; neither the edge API nor RabbitMQ
+receives the executable bytes. `X-Aegis-Scan: static-pe-v1` remains an explicitly labelled,
+local-only synchronous compatibility path.
 `MALWARE_MAX_UPLOAD_BYTES` can set a 1-byte to 100-MB file limit, while
 `MALWARE_MAX_CONCURRENT_SCANS` can set 1 to 32 in-flight scans (default: 4).
 
-Completed scan metadata is stored under `data/scans/`; the uploaded binary is not
-written there or retained after scoring. Metadata files are committed with an
-atomic replace so readers never observe partial history entries. Each result includes the SHA-256, model
-probability and threshold, verdict, grouped model contributions, static indicators,
-PE type, architecture, section/import counts, and scan duration.
+Local quarantine objects live under `data/quarantine/`, while public manifests live under
+`data/results/` as create-only, content-hashed JSON. The result contract separates calibrated
+prediction, policy decision, model contributors, independently observed indicators, limitations,
+and immutable release provenance. The manifest always records `executed: false`.
 
 The API exposes:
 
-- `POST /api/v1/scans` — multipart PE upload and synchronous static scan.
-- `GET /api/v1/scans` — recent metadata-only scan history.
-- `GET /api/v1/scans/{scan_id}` — one persisted scan result.
+- `POST /api/v1/scans` — create an async workflow or invoke the labelled legacy path.
+- `PUT /api/v1/scans/{scan_id}/content` — local development upload capability only.
+- `POST /api/v1/scans/{scan_id}:seal` — verify and queue one immutable object generation.
+- `GET /api/v1/scans` — recent metadata-only workflow/result history.
+- `GET /api/v1/scans/{scan_id}` — workflow state and immutable public result.
+
+## Distributed runtime
+
+Install the deployment adapters with `pip install -e '.[runtime,azure]'`. Apply
+`db/migrations/001_scan_workflows.sql` followed by `002_workflow_delivery.sql` to PostgreSQL,
+then configure the API, outbox publisher, and worker with the same environment:
+
+```powershell
+$env:MALWARE_WORKFLOW_BACKEND = "postgres"
+$env:MALWARE_DATABASE_URL = "postgresql://..."
+$env:MALWARE_RABBITMQ_URL = "amqps://..."
+$env:MALWARE_RABBITMQ_QUEUE = "malware.scan"
+
+malware-api       # edge/API process
+malware-outbox    # transactional-outbox publisher
+malware-worker    # metadata consumer + disposable extractor + trusted decision
+```
+
+For Azure direct upload, set `MALWARE_QUARANTINE_BACKEND=azure`,
+`MALWARE_AZURE_ACCOUNT_URL`, and `MALWARE_AZURE_QUARANTINE_CONTAINER`. The account uses
+`DefaultAzureCredential`; upload grants are user-delegation SAS tokens scoped to one block blob,
+HTTPS, create/write only, and at most 15 minutes. Public containers and mutable/latest object
+resolution are rejected. Configure Blob CORS for the dashboard origin separately.
+
+See `docs/hostile-content-runtime.md` for trust boundaries, configuration, and the remaining
+production hardening work.
 
 Static ML is a triage signal rather than proof that a file is safe or malicious.
 Signature reputation and isolated behavioral sandboxing remain later defense layers.

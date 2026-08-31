@@ -34,7 +34,8 @@ export type Verdict =
   | 'likely_benign'
   | 'needs_review'
   | 'likely_malicious'
-  | 'high_risk';
+  | 'high_risk'
+  | 'inconclusive';
 
 export type IndicatorSeverity = 'low' | 'medium' | 'high';
 

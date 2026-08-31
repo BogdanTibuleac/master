@@ -385,7 +385,9 @@ function RiskGauge({
       ? '#6ee7b7'
       : verdict === 'needs_review'
         ? '#fcd34d'
-        : '#fda4af';
+        : verdict === 'inconclusive'
+          ? '#cbd5e1'
+          : '#fda4af';
   const safeProbability = probability === null ? 0 : Math.max(0, Math.min(1, probability));
 
   return (

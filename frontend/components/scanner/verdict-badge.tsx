@@ -8,6 +8,7 @@ export function VerdictBadge({ verdict }: { verdict: Verdict }) {
     needs_review: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
     likely_malicious: 'border-rose-300/20 bg-rose-300/10 text-rose-200',
     high_risk: 'border-rose-300/30 bg-rose-300/15 text-rose-100',
+    inconclusive: 'border-slate-300/20 bg-slate-300/10 text-slate-200',
   };
 
   return (

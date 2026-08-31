@@ -6,6 +6,7 @@ export function verdictLabel(verdict: Verdict) {
     needs_review: 'Needs review',
     likely_malicious: 'Likely malicious',
     high_risk: 'High risk',
+    inconclusive: 'Inconclusive',
   }[verdict];
 }
 

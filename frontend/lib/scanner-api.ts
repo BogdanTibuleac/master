@@ -41,6 +41,7 @@ const verdictSet = new Set<Verdict>([
   'needs_review',
   'likely_malicious',
   'high_risk',
+  'inconclusive',
 ]);
 
 export class ScannerApiError extends Error {
@@ -364,6 +365,7 @@ export function normalizeScanResult(
   const decision = asObject(object.decision);
   const qualityObject = asObject(object.quality);
   const provenanceObject = asObject(object.provenance);
+  const releaseObject = asObject(object.release);
   const verdict = verdictValue(decision?.label ?? object.verdict);
   if (!verdict) {
     throw new ScannerContractError('The completed result has no policy verdict.');
@@ -371,10 +373,12 @@ export function normalizeScanResult(
 
   const featureCount = numberValue(
     qualityObject?.feature_count ?? object.feature_count,
-  );
+  ) ?? featureCountFromSchema(stringValue(releaseObject?.feature_schema_id));
   const analysisReleaseId =
     stringValue(
-      provenanceObject?.analysis_release_id ?? object.analysis_release_id,
+      provenanceObject?.analysis_release_id ??
+        object.analysis_release_id ??
+        releaseObject?.analysis_release_id,
     ) ??
     fallback.analysisReleaseId ??
     null;
@@ -386,7 +390,12 @@ export function normalizeScanResult(
       fallback.filename ??
       'Unnamed sample',
     sha256:
-      stringValue(object.sha256 ?? object.sample_sha256 ?? object.input_digest) ??
+      digestValue(
+        object.sha256 ??
+          object.sample_sha256 ??
+          object.input_digest ??
+          object.sample_digest,
+      ) ??
       '',
     size_bytes:
       numberValue(object.size_bytes) ?? fallback.sizeBytes ?? 0,
@@ -403,7 +412,9 @@ export function normalizeScanResult(
     raw_margin: numberValue(prediction?.raw_margin ?? object.raw_margin),
     confidence: numberValue(object.confidence),
     model_name:
-      stringValue(object.model_name ?? provenanceObject?.model_id) ?? null,
+      stringValue(
+        object.model_name ?? provenanceObject?.model_id ?? releaseObject?.model_id,
+      ) ?? null,
     decision_threshold: numberValue(object.decision_threshold),
     feature_count: featureCount,
     file_type: stringValue(object.file_type),
@@ -418,10 +429,11 @@ export function normalizeScanResult(
     observed_indicators: indicatorList(
       object.observed_indicators ?? object.signals,
     ),
-    quality: normalizeQuality(qualityObject, featureCount),
+    quality: normalizeQuality(qualityObject, object, releaseObject, featureCount),
     provenance: normalizeProvenance(
       provenanceObject,
       object,
+      releaseObject,
       analysisReleaseId,
     ),
     limitations: stringList(object.limitations),
@@ -497,19 +509,25 @@ async function responseError(response: Response, fallbackMessage: string) {
 
 function normalizeQuality(
   quality: JsonObject | null,
+  result: JsonObject,
+  release: JsonObject | null,
   featureCount: number | null,
 ): ExtractionQuality {
-  const extraction = stringValue(quality?.extraction);
+  const extraction = stringValue(quality?.extraction ?? result.extraction);
   return {
     extraction:
       extraction === 'complete' ||
       extraction === 'partial' ||
       extraction === 'unavailable'
         ? extraction
-        : 'not_reported',
+        : extraction === 'failed'
+          ? 'unavailable'
+          : 'not_reported',
     parser_disagreement: booleanValue(quality?.parser_disagreement),
     schema_compatible: booleanValue(
-      quality?.schema_compatible ?? quality?.feature_schema_compatible,
+      quality?.schema_compatible ??
+        quality?.feature_schema_compatible ??
+        (release?.feature_schema_id ? true : null),
     ),
     feature_count: featureCount,
     warnings: stringList(quality?.warnings),
@@ -519,31 +537,38 @@ function normalizeQuality(
 function normalizeProvenance(
   provenance: JsonObject | null,
   result: JsonObject,
+  release: JsonObject | null,
   analysisReleaseId: string | null,
 ): AnalysisProvenance {
   return {
     analysis_release_id: analysisReleaseId,
     extractor_digest: stringValue(
-      provenance?.extractor_digest ?? result.extractor_digest,
+      provenance?.extractor_digest ??
+        result.extractor_digest ??
+        release?.extractor_image_digest,
     ),
     feature_schema_id: stringValue(
-      provenance?.feature_schema_id ?? result.feature_schema_id,
+      provenance?.feature_schema_id ??
+        result.feature_schema_id ??
+        release?.feature_schema_id,
     ),
     feature_schema_digest: stringValue(
-      provenance?.feature_schema_digest ?? result.feature_schema_digest,
+      provenance?.feature_schema_digest ??
+        result.feature_schema_digest ??
+        release?.feature_schema_digest,
     ),
     model_id: stringValue(
-      provenance?.model_id ?? result.model_id ?? result.model_name,
+      provenance?.model_id ?? result.model_id ?? result.model_name ?? release?.model_id,
     ),
     model_digest: stringValue(provenance?.model_digest ?? result.model_digest),
     calibrator_id: stringValue(
-      provenance?.calibrator_id ?? result.calibrator_id,
+      provenance?.calibrator_id ?? result.calibrator_id ?? release?.calibrator_id,
     ),
     policy_id: stringValue(
       provenance?.policy_id ?? asObject(result.decision)?.policy_id,
     ),
     result_digest: stringValue(
-      provenance?.result_digest ?? result.result_digest,
+      provenance?.result_digest ?? result.result_digest ?? result.manifest_digest,
     ),
   };
 }
@@ -553,14 +578,19 @@ function indicatorList(value: unknown): StaticSignal[] {
   return value.flatMap((item) => {
     const object = asObject(item);
     if (!object) return [];
-    const title = stringValue(object.title ?? object.name ?? object.indicator);
+    const title = stringValue(
+      object.title ?? object.name ?? object.indicator ?? object.indicator_id,
+    );
     if (!title) return [];
     return [
       {
         title,
         description:
           stringValue(
-            object.description ?? object.detail ?? object.observation,
+            object.description ??
+              object.detail ??
+              object.observation ??
+              object.summary,
           ) ?? 'Observed during bounded static extraction.',
         severity: severityValue(object.severity),
         family: stringValue(object.family ?? object.category),
@@ -642,7 +672,21 @@ function verdictValue(value: unknown): Verdict | null {
 
 function severityValue(value: unknown): IndicatorSeverity {
   const normalized = stringValue(value)?.toLowerCase();
+  if (normalized === 'critical') return 'high';
   return normalized === 'high' || normalized === 'medium' ? normalized : 'low';
+}
+
+function digestValue(value: unknown): string | null {
+  const digest = stringValue(value);
+  return digest?.startsWith('sha256:') ? digest.slice(7) : digest;
+}
+
+function featureCountFromSchema(value: string | null): number | null {
+  if (!value) return null;
+  const match = value.match(/(?:^|[/:-])(\d{3,5})$/);
+  if (!match) return null;
+  const count = Number(match[1]);
+  return Number.isSafeInteger(count) && count > 0 ? count : null;
 }
 
 function boundedPercent(value: number | null) {

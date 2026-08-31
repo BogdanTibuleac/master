@@ -469,3 +469,16 @@ def test_cors_settings_reject_wildcards_and_normalize_origins() -> None:
         BackendSettings(cors_origins=("*",))
 
     assert normalize_origin(" HTTPS://EXAMPLE.COM:443/ ") == "https://example.com"
+
+
+@pytest.mark.parametrize(
+    "release_id",
+    (
+        "sha256:short",
+        "sha256:" + "G" * 64,
+        "release-v1",
+    ),
+)
+def test_backend_settings_require_canonical_release_digest(release_id: str) -> None:
+    with pytest.raises(ValueError, match="analysis_release_id"):
+        BackendSettings(analysis_release_id=release_id)

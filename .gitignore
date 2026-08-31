@@ -8,6 +8,8 @@ htmlcov/
 data/raw/
 data/processed/
 data/scans/
+data/quarantine/
+data/results/
 artifacts/
 *.egg-info/
 
