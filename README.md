@@ -73,6 +73,20 @@ The API is available at `http://127.0.0.1:8000`, with interactive documentation
 at `/docs`. Routes depend on services, services depend on repository contracts,
 and only repository implementations access dataset files.
 
+## Frontend dashboard
+
+The dashboard lives in `frontend/` and uses the local API URL from
+`NEXT_PUBLIC_API_URL` (default: `http://127.0.0.1:8000`). Start it separately:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` to view dataset readiness, run verification and smoke
+checks, and follow the experiment development path.
+
 ## Branch delivery plan
 
 | Branch | Purpose |

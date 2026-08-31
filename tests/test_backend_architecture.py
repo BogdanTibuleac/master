@@ -54,6 +54,14 @@ def test_routes_expose_health_status_and_smoke_test() -> None:
     client = TestClient(application)
 
     assert client.get("/health").json() == {"status": "ok"}
+    cors_response = client.options(
+        "/api/v1/datasets/ember2018/status",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert cors_response.headers["access-control-allow-origin"] == "http://localhost:3000"
     status_response = client.get("/api/v1/datasets/ember2018/status")
     assert status_response.status_code == 200
     assert status_response.json()["ready"] is True
