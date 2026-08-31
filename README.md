@@ -87,6 +87,19 @@ npm run dev
 Open `http://localhost:3000` to view dataset readiness, run verification and smoke
 checks, and follow the experiment development path.
 
+## Baseline training
+
+Prepare the train, validation, and test tables configured in `configs/baseline.yaml`,
+then run the reproducible LightGBM experiment:
+
+```powershell
+malware-train --config configs/baseline.yaml --artifacts-dir artifacts
+```
+
+The run uses validation-based early stopping and writes a native LightGBM model plus
+accuracy, precision, recall, F1, ROC-AUC, average precision, and confusion-matrix
+counts to `artifacts/<experiment_name>/`.
+
 ## Branch delivery plan
 
 | Branch | Purpose |
