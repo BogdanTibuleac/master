@@ -1,4 +1,13 @@
-import { Gauge, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  FileCheck2,
+  Fingerprint,
+  Gauge,
+  Info,
+  Layers3,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import { useId } from 'react';
 
 import {
@@ -8,11 +17,13 @@ import {
   verdictLabel,
 } from '@/components/scanner/formatters';
 import type {
+  ExtractionQuality,
   ScanResult,
   StaticSignal,
   Verdict,
 } from '@/components/scanner/types';
 import { VerdictBadge } from '@/components/scanner/verdict-badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -33,7 +44,7 @@ export function ScanResultPanel({ result }: { result: ScanResult }) {
       <CardHeader className="border-b border-white/8 pb-4">
         <CardTitle className="flex items-center gap-2 text-white">
           <Gauge className="size-4 text-cyan-300" />
-          Scan result
+          Governed analysis result
         </CardTitle>
         <CardDescription className="break-all sm:break-normal">
           {result.filename}
@@ -50,75 +61,107 @@ export function ScanResultPanel({ result }: { result: ScanResult }) {
 }
 
 export function ScanResultDetails({ result }: { result: ScanResult }) {
-  const evidenceId = useId();
+  const contributorsId = useId();
   const indicatorsId = useId();
+  const qualityId = useId();
+  const provenanceId = useId();
   const maximumContribution = Math.max(
-    ...result.contributions.map((item) => Math.abs(item.contribution)),
+    ...result.model_contributors.map((item) => Math.abs(item.contribution)),
     0.001,
   );
+  const displayedRisk =
+    result.calibrated_risk_score ?? result.malware_probability;
+  const calibrated = result.calibrated_risk_score !== null;
 
   return (
     <div>
-      <div className="grid gap-6 xl:grid-cols-[250px_1fr] xl:gap-8">
+      <div className="grid gap-6 xl:grid-cols-[270px_1fr] xl:gap-8">
         <div className="flex flex-col items-center rounded-2xl border border-white/8 bg-black/10 p-5 text-center sm:p-6">
           <RiskGauge
-            probability={result.malware_probability}
+            probability={displayedRisk}
             verdict={result.verdict}
+            calibrated={calibrated}
           />
           <p className="mt-5 text-sm font-medium text-white">
             {verdictLabel(result.verdict)}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Threshold {formatPercent(result.decision_threshold)} · confidence{' '}
-            {formatPercent(result.confidence)}
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {calibrated
+              ? 'Versioned calibration applied before policy.'
+              : 'Calibration was not reported; showing raw model probability.'}
           </p>
           <div className="mt-5 grid w-full grid-cols-2 gap-2">
             <ResultFact
               label="Type"
-              value={`${result.file_type} / ${result.architecture}`}
+              value={joinReported(result.file_type, result.architecture)}
             />
             <ResultFact label="Size" value={formatBytes(result.size_bytes)} />
             <ResultFact
               label="Sections"
-              value={result.section_count.toString()}
+              value={formatInteger(result.section_count)}
             />
             <ResultFact
               label="Imports"
-              value={result.import_count.toLocaleString()}
+              value={formatInteger(result.import_count)}
             />
-            <ResultFact label="Signed" value={result.signed ? 'Yes' : 'No'} />
+            <ResultFact
+              label="Signature"
+              value={signatureLabel(result.signature_status)}
+            />
             <ResultFact
               label="Duration"
-              value={`${result.scan_duration_ms} ms`}
+              value={
+                result.scan_duration_ms === null
+                  ? 'Not reported'
+                  : `${result.scan_duration_ms} ms`
+              }
             />
+          </div>
+          <div className="mt-3 w-full rounded-xl border border-white/7 bg-white/[0.022] p-3 text-left">
+            <p className="text-[10px] uppercase tracking-wider text-slate-600">
+              Policy context
+            </p>
+            <p className="mt-1.5 text-xs text-slate-400">
+              {result.decision_threshold === null
+                ? 'Threshold not reported'
+                : `Threshold ${formatPercent(result.decision_threshold)}`}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {result.confidence === null
+                ? 'Confidence not reported'
+                : `Confidence ${formatPercent(result.confidence)}`}
+            </p>
           </div>
         </div>
 
         <div className="space-y-6">
-          <section aria-labelledby={evidenceId}>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <section aria-labelledby={contributorsId}>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3
-                  id={evidenceId}
-                  className="text-sm font-medium text-slate-200"
+                  id={contributorsId}
+                  className="flex items-center gap-2 text-sm font-medium text-slate-200"
                 >
-                  Model evidence
+                  <Layers3 className="size-4 text-violet-300" />
+                  Model contributors
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Strongest grouped contributions to this prediction
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                  Grouped contributions in model-margin space. A contributor does not prove that a specific observed API or string caused the verdict.
                 </p>
               </div>
               <Badge
                 variant="outline"
                 className="w-fit border-white/10 font-mono text-slate-400"
               >
-                {result.feature_count.toLocaleString()} features
+                {result.feature_count === null
+                  ? 'Feature count not reported'
+                  : `${result.feature_count.toLocaleString()} features`}
               </Badge>
             </div>
-            {result.contributions.length ? (
+            {result.model_contributors.length ? (
               <div className="space-y-3">
-                {result.contributions.map((item) => (
-                  <div key={item.feature_group}>
+                {result.model_contributors.map((item) => (
+                  <div key={`${item.feature_group}-${item.contribution}`}>
                     <div className="mb-1.5 flex items-center justify-between gap-4 text-xs">
                       <span className="text-slate-300">
                         {item.feature_group}
@@ -153,30 +196,34 @@ export function ScanResultDetails({ result }: { result: ScanResult }) {
                 ))}
               </div>
             ) : (
-              <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-slate-500">
-                No feature contributions were reported for this scan.
-              </p>
+              <UnavailableCopy>
+                Model contribution data was not published for this result.
+              </UnavailableCopy>
             )}
           </section>
 
           <section aria-labelledby={indicatorsId}>
             <h3
               id={indicatorsId}
-              className="text-sm font-medium text-slate-200"
+              className="flex items-center gap-2 text-sm font-medium text-slate-200"
             >
-              Static indicators
+              <FileCheck2 className="size-4 text-cyan-300" />
+              Observed indicators
             </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Capabilities and anomalies found without running the file
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Deterministic facts extracted independently from the model. Their absence is not proof of safety.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {result.signals.length ? (
-                result.signals.map((signal) => (
-                  <SignalCard key={signal.title} signal={signal} />
+              {result.observed_indicators.length ? (
+                result.observed_indicators.map((signal) => (
+                  <SignalCard
+                    key={`${signal.family ?? 'general'}-${signal.title}`}
+                    signal={signal}
+                  />
                 ))
               ) : (
-                <div className="rounded-xl border border-emerald-300/12 bg-emerald-300/[0.045] p-4 text-sm text-emerald-200 sm:col-span-2">
-                  No notable static indicators were extracted.
+                <div className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-slate-500 sm:col-span-2">
+                  No observed indicators were published. This is not a safety claim.
                 </div>
               )}
             </div>
@@ -184,26 +231,140 @@ export function ScanResultDetails({ result }: { result: ScanResult }) {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 border-t border-white/8 pt-5 lg:grid-cols-[1fr_auto] lg:items-end">
+      <div className="mt-6 grid gap-4 border-t border-white/8 pt-6 xl:grid-cols-2">
+        <section
+          aria-labelledby={qualityId}
+          className="rounded-2xl border border-white/8 bg-black/10 p-5"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3
+                id={qualityId}
+                className="flex items-center gap-2 text-sm font-medium text-slate-200"
+              >
+                <ShieldCheck className="size-4 text-emerald-300" />
+                Extraction quality
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Trust gates applied before model scoring
+              </p>
+            </div>
+            <QualityBadge quality={result.quality} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <ResultFact
+              label="Schema"
+              value={booleanQuality(result.quality.schema_compatible)}
+            />
+            <ResultFact
+              label="Parser agreement"
+              value={parserAgreement(result.quality.parser_disagreement)}
+            />
+            <ResultFact
+              label="Features"
+              value={formatInteger(result.quality.feature_count)}
+            />
+          </div>
+          {result.quality.warnings.length > 0 && (
+            <Alert className="mt-4 border-amber-300/15 bg-amber-300/[0.045]">
+              <AlertTriangle className="text-amber-300" />
+              <AlertTitle className="text-amber-200">Quality warnings</AlertTitle>
+              <AlertDescription className="text-slate-500">
+                <ul className="list-disc space-y-1 pl-4">
+                  {result.quality.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+        </section>
+
+        <section
+          aria-labelledby={provenanceId}
+          className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.025] p-5"
+        >
+          <h3
+            id={provenanceId}
+            className="flex items-center gap-2 text-sm font-medium text-slate-200"
+          >
+            <Fingerprint className="size-4 text-violet-300" />
+            Analysis provenance
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Immutable release and component identifiers
+          </p>
+          <dl className="mt-4 space-y-3">
+            <ProvenanceRow
+              label="Analysis release"
+              value={result.provenance.analysis_release_id}
+              emphasized
+            />
+            <ProvenanceRow
+              label="Model"
+              value={
+                result.provenance.model_digest ??
+                result.provenance.model_id ??
+                result.model_name
+              }
+            />
+            <ProvenanceRow
+              label="Feature schema"
+              value={
+                result.provenance.feature_schema_digest ??
+                result.provenance.feature_schema_id
+              }
+            />
+            <ProvenanceRow
+              label="Extractor"
+              value={result.provenance.extractor_digest}
+            />
+            <ProvenanceRow
+              label="Calibrator"
+              value={result.provenance.calibrator_id}
+            />
+            <ProvenanceRow
+              label="Policy"
+              value={result.provenance.policy_id}
+            />
+          </dl>
+        </section>
+      </div>
+
+      {result.limitations.length > 0 && (
+        <Alert className="mt-4 border-cyan-300/12 bg-cyan-300/[0.035]">
+          <Info className="text-cyan-300" />
+          <AlertTitle className="text-slate-200">Result limitations</AlertTitle>
+          <AlertDescription className="text-slate-500">
+            <ul className="list-disc space-y-1 pl-4">
+              {result.limitations.map((limitation) => (
+                <li key={limitation}>{limitation}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="mt-5 grid gap-4 border-t border-white/8 pt-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="min-w-0">
           <p className="text-xs text-slate-500">SHA-256</p>
           <p className="mt-1 break-all font-mono text-xs leading-5 text-slate-300">
-            {result.sha256}
+            {result.sha256 || 'Not reported'}
           </p>
           <p className="mt-2 text-xs text-slate-600">
-            {result.model_name} · scanned{' '}
+            {result.model_name ?? 'Model id not reported'} · published{' '}
             {formatDate(result.scanned_at_utc, true)}
           </p>
         </div>
         <div
-          className={`flex items-center gap-2 text-xs ${
-            result.binary_retained ? 'text-amber-300' : 'text-emerald-300'
+          className={`flex max-w-sm items-start gap-2 text-xs ${
+            result.binary_retained === true
+              ? 'text-amber-300'
+              : 'text-emerald-300'
           }`}
         >
-          <Trash2 className="size-3.5 shrink-0" />
-          {result.binary_retained
-            ? 'Uploaded binary retained by the scanner'
-            : 'Uploaded binary discarded after analysis'}
+          <Trash2 className="mt-0.5 size-3.5 shrink-0" />
+          {retentionLabel(result.binary_retained)}
         </div>
       </div>
     </div>
@@ -213,9 +374,11 @@ export function ScanResultDetails({ result }: { result: ScanResult }) {
 function RiskGauge({
   probability,
   verdict,
+  calibrated,
 }: {
-  probability: number;
+  probability: number | null;
   verdict: Verdict;
+  calibrated: boolean;
 }) {
   const color =
     verdict === 'likely_benign'
@@ -223,21 +386,25 @@ function RiskGauge({
       : verdict === 'needs_review'
         ? '#fcd34d'
         : '#fda4af';
+  const safeProbability = probability === null ? 0 : Math.max(0, Math.min(1, probability));
 
   return (
     <div
       className="grid size-36 place-items-center rounded-full p-2"
       style={{
-        background: `conic-gradient(${color} ${probability * 360}deg, rgba(255,255,255,.06) 0deg)`,
+        background:
+          probability === null
+            ? 'rgba(255,255,255,.06)'
+            : `conic-gradient(${color} ${safeProbability * 360}deg, rgba(255,255,255,.06) 0deg)`,
       }}
     >
       <div className="grid size-full place-items-center rounded-full border border-white/8 bg-[#0a0e1a]">
         <div>
           <p className="font-mono text-3xl font-semibold text-white">
-            {formatPercent(probability)}
+            {probability === null ? '—' : formatPercent(probability)}
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-slate-500">
-            malware risk
+            {calibrated ? 'calibrated risk' : 'model probability'}
           </p>
         </div>
       </div>
@@ -254,8 +421,15 @@ function SignalCard({ signal }: { signal: StaticSignal }) {
 
   return (
     <div className={`rounded-xl border p-3.5 ${tones[signal.severity]}`}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-medium">{signal.title}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium">{signal.title}</p>
+          {signal.family && (
+            <p className="mt-1 text-[9px] uppercase tracking-wider opacity-55">
+              {signal.family}
+            </p>
+          )}
+        </div>
         <span className="text-[9px] uppercase tracking-wider opacity-60">
           {signal.severity}
         </span>
@@ -281,4 +455,90 @@ function ResultFact({ label, value }: { label: string; value: string }) {
       </p>
     </div>
   );
+}
+
+function ProvenanceRow({
+  label,
+  value,
+  emphasized = false,
+}: {
+  label: string;
+  value: string | null;
+  emphasized?: boolean;
+}) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[120px_1fr] sm:gap-3">
+      <dt className="text-[11px] text-slate-600">{label}</dt>
+      <dd
+        className={`break-all font-mono text-[11px] leading-4 ${
+          emphasized && value ? 'text-violet-200' : 'text-slate-400'
+        }`}
+      >
+        {value ?? 'Not reported'}
+      </dd>
+    </div>
+  );
+}
+
+function QualityBadge({ quality }: { quality: ExtractionQuality }) {
+  const tone =
+    quality.extraction === 'complete' && quality.schema_compatible !== false
+      ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200'
+      : quality.extraction === 'not_reported'
+        ? 'border-white/10 bg-white/[0.035] text-slate-400'
+        : 'border-amber-300/20 bg-amber-300/10 text-amber-200';
+  const label = {
+    complete: 'Complete',
+    partial: 'Partial',
+    unavailable: 'Unavailable',
+    not_reported: 'Not reported',
+  }[quality.extraction];
+  return <Badge className={`border ${tone}`}>{label}</Badge>;
+}
+
+function UnavailableCopy({ children }: { children: string }) {
+  return (
+    <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-slate-500">
+      {children}
+    </p>
+  );
+}
+
+function joinReported(left: string | null, right: string | null) {
+  return [left, right].filter(Boolean).join(' / ') || 'Not reported';
+}
+
+function formatInteger(value: number | null) {
+  return value === null ? 'Not reported' : value.toLocaleString();
+}
+
+function booleanQuality(value: boolean | null) {
+  if (value === null) return 'Not reported';
+  return value ? 'Compatible' : 'Mismatch';
+}
+
+function parserAgreement(disagreement: boolean | null) {
+  if (disagreement === null) return 'Not reported';
+  return disagreement ? 'Disagreement' : 'Agreed';
+}
+
+function signatureLabel(status: ScanResult['signature_status']) {
+  return {
+    absent: 'Absent',
+    valid_trusted: 'Valid / trusted',
+    valid_untrusted: 'Valid / untrusted',
+    invalid: 'Invalid',
+    unknown_offline: 'Unknown offline',
+    not_reported: 'Not reported',
+  }[status];
+}
+
+function retentionLabel(retained: boolean | null) {
+  if (retained === true) {
+    return 'The sample remains in private quarantine under the server retention policy.';
+  }
+  if (retained === false) {
+    return 'The sample was deleted from quarantine under the server retention policy.';
+  }
+  return 'Quarantine retention was not reported by this scanner response.';
 }

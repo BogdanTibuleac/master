@@ -41,7 +41,9 @@ type ScanUploadCardProps = {
   connection: ConnectionState;
   error: string | null;
   file: File | null;
-  submitting: boolean;
+  busy: boolean;
+  phaseLabel: string | null;
+  modeNotice: string | null;
   onClear: () => void;
   onFileSelect: (file: File | null) => void;
   onRetryConnection: () => void;
@@ -52,7 +54,9 @@ export function ScanUploadCard({
   connection,
   error,
   file,
-  submitting,
+  busy,
+  phaseLabel,
+  modeNotice,
   onClear,
   onFileSelect,
   onRetryConnection,
@@ -79,7 +83,7 @@ export function ScanUploadCard({
           Upload suspicious file
         </CardTitle>
         <CardDescription>
-          Static analysis only. The file is never launched.
+          Create a scan, upload directly to quarantine, then seal it for static analysis.
         </CardDescription>
         <CardAction>
           <Badge className="border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
@@ -95,13 +99,13 @@ export function ScanUploadCard({
           accept={supportedScanExtensions.join(',')}
           className="sr-only"
           onChange={handleInput}
-          disabled={submitting}
+          disabled={busy}
         />
         <button
           type="button"
           data-testid="scan-dropzone"
           aria-describedby="scan-file-requirements"
-          disabled={submitting}
+          disabled={busy}
           onClick={() => document.getElementById('suspicious-file')?.click()}
           onDragEnter={(event) => {
             event.preventDefault();
@@ -161,7 +165,7 @@ export function ScanUploadCard({
           )}
         </button>
 
-        {file && !submitting && (
+        {file && !busy && (
           <div className="flex justify-end">
             <Button
               type="button"
@@ -197,7 +201,7 @@ export function ScanUploadCard({
             </AlertTitle>
             <AlertDescription className="text-slate-500">
               {connection === 'offline'
-                ? 'Your file has not been uploaded. Reconnect the local API before starting a scan.'
+                ? 'Offline state: your file has not been uploaded. Reconnect the scanner API before starting a scan.'
                 : 'Scanning will be available as soon as the local API responds.'}
             </AlertDescription>
             {connection === 'offline' && (
@@ -212,6 +216,21 @@ export function ScanUploadCard({
                 Retry connection
               </Button>
             )}
+          </Alert>
+        )}
+
+        {modeNotice && (
+          <Alert
+            aria-live="polite"
+            className="border-amber-300/20 bg-amber-300/[0.06]"
+          >
+            <AlertTriangle className="text-amber-300" />
+            <AlertTitle className="text-amber-200">
+              Local compatibility mode
+            </AlertTitle>
+            <AlertDescription className="text-slate-500">
+              {modeNotice}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -230,20 +249,19 @@ export function ScanUploadCard({
         <Button
           data-testid="start-scan"
           className="h-11 w-full bg-cyan-300 text-slate-950 shadow-[0_0_28px_rgba(103,232,249,.14)] hover:bg-cyan-200"
-          disabled={!file || submitting || connection !== 'online'}
+          disabled={!file || busy || connection !== 'online'}
           onClick={onSubmit}
-          aria-describedby={submitting ? 'scan-progress-status' : undefined}
+          aria-describedby={busy ? 'scan-progress-status' : undefined}
         >
-          {submitting ? <Spinner /> : <ShieldCheck />}
-          {submitting ? 'Extracting 2,381 features…' : 'Start static scan'}
+          {busy ? <Spinner /> : <ShieldCheck />}
+          {busy ? (phaseLabel ?? 'Starting secure scan…') : 'Start secure scan'}
         </Button>
-        {submitting && (
+        {busy && (
           <output
             id="scan-progress-status"
             className="block text-center text-xs text-slate-500"
           >
-            Static feature extraction and model scoring are in progress. Do not
-            close this page.
+            {phaseLabel ?? 'The hostile-content workflow is in progress.'} Do not close this page.
           </output>
         )}
       </CardContent>

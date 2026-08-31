@@ -14,8 +14,12 @@ import {
   formatDate,
   formatPercent,
 } from '@/components/scanner/formatters';
+import {
+  LifecycleStatusBadge,
+  ScanLifecyclePanel,
+} from '@/components/scanner/scan-lifecycle';
 import { ScanResultDetails } from '@/components/scanner/scan-result';
-import type { HistoryState, ScanResult } from '@/components/scanner/types';
+import type { HistoryState, ScanJob } from '@/components/scanner/types';
 import { VerdictBadge } from '@/components/scanner/verdict-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +58,7 @@ import {
 
 type ScanHistoryCardProps = {
   error: string | null;
-  history: ScanResult[];
+  history: ScanJob[];
   state: HistoryState;
   onRefresh: () => void;
 };
@@ -65,7 +69,7 @@ export function ScanHistoryCard({
   state,
   onRefresh,
 }: ScanHistoryCardProps) {
-  const [selected, setSelected] = useState<ScanResult | null>(null);
+  const [selected, setSelected] = useState<ScanJob | null>(null);
   const loadingWithoutData = state === 'loading' && history.length === 0;
   const failedWithoutData = state === 'error' && history.length === 0;
 
@@ -78,7 +82,7 @@ export function ScanHistoryCard({
             Recent scans
           </CardTitle>
           <CardDescription>
-            Persisted findings only; uploaded binaries are not stored
+            Lifecycle, provenance and decisions; quarantine retention follows policy
           </CardDescription>
           <CardAction className="flex items-center gap-2">
             {history.length > 0 && (
@@ -121,7 +125,7 @@ export function ScanHistoryCard({
                     Could not refresh scan history
                   </AlertTitle>
                   <AlertDescription className="text-slate-500">
-                    {error ?? 'Showing the most recently loaded results.'}
+                    {error ?? 'Showing the most recently loaded scan records.'}
                   </AlertDescription>
                 </Alert>
               )}
@@ -139,12 +143,12 @@ export function ScanHistoryCard({
                   <TableHeader>
                     <TableRow className="border-white/8 hover:bg-transparent">
                       <TableHead className="text-slate-500">File</TableHead>
-                      <TableHead className="text-slate-500">Verdict</TableHead>
+                      <TableHead className="text-slate-500">State / decision</TableHead>
                       <TableHead className="text-right text-slate-500">
                         Risk
                       </TableHead>
                       <TableHead className="text-right text-slate-500">
-                        Scanned
+                        Updated
                       </TableHead>
                       <TableHead>
                         <span className="sr-only">Details</span>
@@ -162,17 +166,22 @@ export function ScanHistoryCard({
                             {item.filename}
                           </p>
                           <p className="mt-1 font-mono text-[10px] text-slate-600">
-                            {item.sha256.slice(0, 16)}…
+                            {shortDigest(item.sha256)}
                           </p>
                         </TableCell>
                         <TableCell>
-                          <VerdictBadge verdict={item.verdict} />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <LifecycleStatusBadge status={item.status} />
+                            {item.result && (
+                              <VerdictBadge verdict={item.result.verdict} />
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-slate-200">
-                          {formatPercent(item.malware_probability)}
+                          {riskLabel(item)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-right text-xs text-slate-500">
-                          {formatDate(item.scanned_at_utc)}
+                          {formatDate(item.updated_at_utc)}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -180,7 +189,7 @@ export function ScanHistoryCard({
                             variant="ghost"
                             size="icon-sm"
                             className="text-slate-400 hover:text-cyan-100"
-                            aria-label={`View scan details for ${item.filename}`}
+                            aria-label={`View lifecycle details for ${item.filename}`}
                             onClick={() => setSelected(item)}
                           >
                             <Eye />
@@ -205,8 +214,7 @@ export function ScanHistoryCard({
                   No scans recorded yet
                 </EmptyTitle>
                 <EmptyDescription className="text-slate-600">
-                  Your first completed static scan will appear here with its
-                  verdict and evidence.
+                  Created scans will appear here while they move through upload, extraction and decision stages.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -220,7 +228,7 @@ export function ScanHistoryCard({
           if (!open) setSelected(null);
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border-white/10 bg-[#111725] p-0 text-slate-200 shadow-2xl sm:max-w-5xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border-white/10 bg-[#111725] p-0 text-slate-200 shadow-2xl sm:max-w-6xl">
           {selected && (
             <>
               <DialogHeader className="border-b border-white/8 px-5 py-5 pr-14 sm:px-6">
@@ -230,17 +238,20 @@ export function ScanHistoryCard({
                       {selected.filename}
                     </DialogTitle>
                     <DialogDescription className="mt-2 text-slate-500">
-                      Scanned {formatDate(selected.scanned_at_utc, true)} ·{' '}
+                      Updated {formatDate(selected.updated_at_utc, true)} ·{' '}
                       {formatBytes(selected.size_bytes)}
                     </DialogDescription>
                   </div>
-                  <div className="w-fit">
-                    <VerdictBadge verdict={selected.verdict} />
-                  </div>
+                  <LifecycleStatusBadge status={selected.status} />
                 </div>
               </DialogHeader>
-              <div className="px-5 pb-6 sm:px-6">
-                <ScanResultDetails result={selected} />
+              <div className="space-y-4 px-5 pb-6 sm:px-6">
+                <ScanLifecyclePanel scan={selected} />
+                {selected.result && (
+                  <div className="rounded-2xl border border-white/8 bg-black/10 p-5 sm:p-6">
+                    <ScanResultDetails result={selected.result} />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -254,8 +265,8 @@ function HistoryCard({
   item,
   onSelect,
 }: {
-  item: ScanResult;
-  onSelect: (item: ScanResult) => void;
+  item: ScanJob;
+  onSelect: (item: ScanJob) => void;
 }) {
   return (
     <article className="rounded-xl border border-white/8 bg-white/[0.022] p-4">
@@ -265,18 +276,23 @@ function HistoryCard({
             {item.filename}
           </p>
           <p className="mt-1 font-mono text-[10px] text-slate-600">
-            {item.sha256.slice(0, 16)}…
+            {shortDigest(item.sha256)}
           </p>
         </div>
-        <VerdictBadge verdict={item.verdict} />
+        <LifecycleStatusBadge status={item.status} />
       </div>
+      {item.result && (
+        <div className="mt-3">
+          <VerdictBadge verdict={item.result.verdict} />
+        </div>
+      )}
       <div className="mt-4 flex items-end justify-between gap-4 border-t border-white/6 pt-3">
         <div>
           <p className="font-mono text-sm text-slate-200">
-            {formatPercent(item.malware_probability)} risk
+            {riskLabel(item)}
           </p>
           <p className="mt-1 text-xs text-slate-600">
-            {formatDate(item.scanned_at_utc)}
+            {formatDate(item.updated_at_utc)}
           </p>
         </div>
         <Button
@@ -285,7 +301,7 @@ function HistoryCard({
           size="sm"
           className="border-white/10 bg-white/[0.035] text-slate-200"
           onClick={() => onSelect(item)}
-          aria-label={`View scan details for ${item.filename}`}
+          aria-label={`View lifecycle details for ${item.filename}`}
         >
           <Eye />
           View details
@@ -301,7 +317,7 @@ function HistorySkeleton() {
       {[0, 1, 2].map((item) => (
         <div
           key={item}
-          className="grid grid-cols-[1fr_90px] items-center gap-4 rounded-xl border border-white/6 p-4 md:grid-cols-[1fr_120px_70px_120px_36px]"
+          className="grid grid-cols-[1fr_90px] items-center gap-4 rounded-xl border border-white/6 p-4 md:grid-cols-[1fr_220px_70px_120px_36px]"
         >
           <div className="space-y-2">
             <Skeleton className="h-4 w-40 bg-white/[0.06]" />
@@ -335,7 +351,7 @@ function HistoryError({
           Scan history is unavailable
         </EmptyTitle>
         <EmptyDescription className="text-slate-500">
-          {error ?? 'The local API did not return recent scan results.'}
+          {error ?? 'The scanner API did not return recent scan records.'}
         </EmptyDescription>
       </EmptyHeader>
       <Button
@@ -350,4 +366,17 @@ function HistoryError({
       </Button>
     </Empty>
   );
+}
+
+function riskLabel(item: ScanJob) {
+  const risk =
+    item.result?.calibrated_risk_score ?? item.result?.malware_probability;
+  if (risk === null || risk === undefined) return '—';
+  return `${formatPercent(risk)}${
+    item.result?.calibrated_risk_score === null ? ' model' : ''
+  }`;
+}
+
+function shortDigest(value: string | null) {
+  return value ? `${value.slice(0, 16)}…` : 'Digest pending';
 }

@@ -31,22 +31,22 @@ export function SafetyBoundaryCard() {
         <SafetyRow
           icon={ShieldAlert}
           title="Never executed"
-          detail="Only file bytes and PE structures are inspected."
+          detail="Static extraction inspects PE structures without launching the sample."
         />
         <SafetyRow
           icon={Binary}
-          title="In-memory extraction"
-          detail="The binary is discarded immediately after scoring."
+          title="Direct quarantine upload"
+          detail="The primary API receives metadata; file bytes go to a short-lived private object grant."
         />
         <SafetyRow
           icon={Fingerprint}
-          title="Metadata-only history"
-          detail="Verdict, SHA-256 and explanations are retained."
+          title="Metadata-only orchestration"
+          detail="Queues carry opaque scan IDs and immutable digests, never file bytes or feature vectors."
         />
         <SafetyRow
           icon={FileKey2}
-          title="Hardened model"
-          detail="The robust LightGBM model evaluates all 2,381 inputs."
+          title="Pinned analysis release"
+          detail="Extractor, schema, model, calibration and policy remain fixed for each scan."
         />
         <div className="mt-5 rounded-xl border border-violet-300/12 bg-violet-300/[0.045] p-4">
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-violet-200">
@@ -54,8 +54,8 @@ export function SafetyBoundaryCard() {
           </p>
           <p className="mt-2 text-xs leading-5 text-slate-400">
             It does not run the file, contact embedded URLs, or guarantee that a
-            file is safe. Static ML results should be combined with signatures
-            and sandbox behavior later.
+            file is safe. Quarantine retention is controlled by server policy,
+            and an inconclusive result is never presented as benign.
           </p>
         </div>
       </CardContent>

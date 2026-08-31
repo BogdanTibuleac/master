@@ -1,8 +1,12 @@
 'use client';
 
-import { CheckCircle2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+  lifecycleLabel,
+  ScanLifecyclePanel,
+} from '@/components/scanner/scan-lifecycle';
 import {
   maximumScanBytes,
   ScanUploadCard,
@@ -14,10 +18,33 @@ import { SafetyBoundaryCard } from '@/components/scanner/safety-boundary-card';
 import type {
   ConnectionState,
   HistoryState,
-  ScanHistory,
-  ScanResult,
+  ScanJob,
 } from '@/components/scanner/types';
+import { isTerminalScanState } from '@/components/scanner/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  legacyLocalModeNotice,
+  runLegacyLocalScan,
+} from '@/lib/legacy-scanner-api';
+import {
+  createIdempotencyKey,
+  createScannerApi,
+  isAsyncScanContractUnavailable,
+  ScannerApiError,
+  sha256File,
+} from '@/lib/scanner-api';
+
+type WorkflowPhase =
+  | 'idle'
+  | 'creating'
+  | 'hashing'
+  | 'uploading'
+  | 'sealing'
+  | 'polling'
+  | 'legacy_scanning';
+
+const pollingIntervalMs = 1_250;
+const maximumTransientPollingErrors = 5;
 
 export function ScannerWorkspace({
   apiUrl,
@@ -28,15 +55,19 @@ export function ScannerWorkspace({
   connection: ConnectionState;
   onRetryConnection: () => void;
 }) {
-  const resultRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<HTMLDivElement>(null);
   const historyRequestRef = useRef<AbortController | null>(null);
+  const workflowRequestRef = useRef<AbortController | null>(null);
+  const client = useMemo(() => createScannerApi(apiUrl), [apiUrl]);
   const [file, setFile] = useState<File | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [phase, setPhase] = useState<WorkflowPhase>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [history, setHistory] = useState<ScanResult[]>([]);
+  const [modeNotice, setModeNotice] = useState<string | null>(null);
+  const [activeScan, setActiveScan] = useState<ScanJob | null>(null);
+  const [history, setHistory] = useState<ScanJob[]>([]);
   const [historyState, setHistoryState] = useState<HistoryState>('loading');
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const busy = phase !== 'idle';
 
   const loadHistory = useCallback(async () => {
     historyRequestRef.current?.abort();
@@ -46,12 +77,7 @@ export function ScannerWorkspace({
     setHistoryError(null);
 
     try {
-      const response = await fetch(`${apiUrl}/api/v1/scans?limit=12`, {
-        signal: controller.signal,
-      });
-      if (!response.ok)
-        throw new Error('The scanner API did not return recent results.');
-      const payload = (await response.json()) as ScanHistory;
+      const payload = await client.listScans(12, controller.signal);
       setHistory(payload.items);
       setHistoryState('ready');
     } catch (historyLoadError) {
@@ -63,10 +89,11 @@ export function ScannerWorkspace({
       );
       setHistoryState('error');
     } finally {
-      if (historyRequestRef.current === controller)
+      if (historyRequestRef.current === controller) {
         historyRequestRef.current = null;
+      }
     }
-  }, [apiUrl]);
+  }, [client]);
 
   useEffect(() => {
     if (connection !== 'online') {
@@ -81,13 +108,24 @@ export function ScannerWorkspace({
     };
   }, [connection, loadHistory]);
 
+  useEffect(
+    () => () => {
+      workflowRequestRef.current?.abort();
+      historyRequestRef.current?.abort();
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (result) resultRef.current?.focus();
-  }, [result]);
+    if (activeScan && isTerminalScanState(activeScan.status)) {
+      terminalRef.current?.focus();
+    }
+  }, [activeScan]);
 
   function chooseFile(candidate: File | null) {
     setError(null);
-    setResult(null);
+    setActiveScan(null);
+    setModeNotice(null);
     if (!candidate) {
       setFile(null);
       return;
@@ -120,39 +158,104 @@ export function ScannerWorkspace({
       return;
     }
     if (connection !== 'online') {
-      setError('Reconnect the local scanner API before starting the scan.');
+      setError('Reconnect the scanner API before starting the scan.');
       return;
     }
 
-    setSubmitting(true);
+    workflowRequestRef.current?.abort();
+    const controller = new AbortController();
+    workflowRequestRef.current = controller;
     setError(null);
-    const form = new FormData();
-    form.append('file', file);
+    setModeNotice(null);
+    setActiveScan(null);
+    setPhase('creating');
 
     try {
-      const response = await fetch(`${apiUrl}/api/v1/scans`, {
-        method: 'POST',
-        headers: { 'X-Aegis-Scan': 'static-pe-v1' },
-        body: form,
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(payload?.detail ?? 'The file could not be scanned.');
-      }
-      const payload = (await response.json()) as ScanResult;
-      setResult(payload);
+      const created = await client.createScan(
+        {
+          filename: file.name,
+          size_bytes: file.size,
+          content_type: file.type || 'application/octet-stream',
+        },
+        createIdempotencyKey(),
+        controller.signal,
+      );
+      setActiveScan(created.scan);
+
+      setPhase('hashing');
+      const sha256 = await sha256File(file);
+
+      setPhase('uploading');
+      const receipt = await client.uploadFile(
+        created.upload,
+        file,
+        controller.signal,
+      );
+      setActiveScan((current) =>
+        current
+          ? {
+              ...current,
+              status: 'upload_received',
+              sha256,
+              updated_at_utc: new Date().toISOString(),
+            }
+          : current,
+      );
+
+      setPhase('sealing');
+      const sealed = await client.sealScan(
+        created.scan.id,
+        { sha256, size_bytes: file.size, ...receipt },
+        controller.signal,
+      );
+      setActiveScan(sealed);
       setFile(null);
+
+      if (!isTerminalScanState(sealed.status)) {
+        setPhase('polling');
+        const completed = await pollUntilTerminal(
+          client.getScan,
+          sealed,
+          setActiveScan,
+          controller.signal,
+        );
+        setActiveScan(completed);
+      }
       await loadHistory();
     } catch (scanError) {
-      setError(
-        scanError instanceof Error
-          ? scanError.message
-          : 'The file could not be scanned.',
-      );
+      if (controller.signal.aborted) return;
+      if (isAsyncScanContractUnavailable(scanError)) {
+        await runLegacyFallback(file, controller);
+        return;
+      }
+      setError(scanErrorMessage(scanError));
     } finally {
-      setSubmitting(false);
+      if (workflowRequestRef.current === controller) {
+        workflowRequestRef.current = null;
+        setPhase('idle');
+      }
+    }
+  }
+
+  async function runLegacyFallback(
+    selectedFile: File,
+    controller: AbortController,
+  ) {
+    setModeNotice(legacyLocalModeNotice);
+    setPhase('legacy_scanning');
+    try {
+      const completed = await runLegacyLocalScan(
+        apiUrl,
+        selectedFile,
+        controller.signal,
+      );
+      setActiveScan(completed);
+      setFile(null);
+      await loadHistory();
+    } catch (fallbackError) {
+      if (!controller.signal.aborted) {
+        setError(scanErrorMessage(fallbackError));
+      }
     }
   }
 
@@ -163,7 +266,9 @@ export function ScannerWorkspace({
           connection={connection}
           error={error}
           file={file}
-          submitting={submitting}
+          busy={busy}
+          phaseLabel={phaseLabel(phase, activeScan)}
+          modeNotice={modeNotice}
           onClear={() => chooseFile(null)}
           onFileSelect={chooseFile}
           onRetryConnection={onRetryConnection}
@@ -172,34 +277,36 @@ export function ScannerWorkspace({
         <SafetyBoundaryCard />
       </div>
 
-      {result && (
+      {activeScan && (
         <div
-          ref={resultRef}
+          ref={terminalRef}
           tabIndex={-1}
-          aria-label={`Scan completed for ${result.filename}`}
+          aria-label={`Scan ${lifecycleLabel(activeScan.status)} for ${activeScan.filename}`}
           className="space-y-4 outline-none"
         >
-          <Alert
-            aria-live="polite"
-            className="border-emerald-300/20 bg-emerald-300/[0.06]"
-          >
-            <CheckCircle2 className="text-emerald-300" />
-            <AlertTitle className="text-emerald-200">
-              Static scan completed
-            </AlertTitle>
-            <AlertDescription className="text-slate-400">
-              The uploaded binary was discarded. Review the verdict and model
-              evidence below.
-            </AlertDescription>
-          </Alert>
-          <ScanResultPanel result={result} />
+          <ScanLifecyclePanel scan={activeScan} />
+          {activeScan.result && <ScanResultPanel result={activeScan.result} />}
+          {activeScan.status === 'complete' && !activeScan.result && (
+            <Alert
+              role="alert"
+              className="border-amber-300/20 bg-amber-300/[0.06]"
+            >
+              <AlertTriangle className="text-amber-300" />
+              <AlertTitle className="text-amber-200">
+                Result manifest unavailable
+              </AlertTitle>
+              <AlertDescription className="text-slate-500">
+                The workflow reported completion without a readable decision manifest. Refresh history or contact the scanner operator; no verdict is being inferred.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       )}
 
       <ScanHistoryCard
         error={
           connection === 'offline'
-            ? 'Reconnect the local API to load persisted scan results.'
+            ? 'Offline state: reconnect the scanner API to load persisted scan records.'
             : historyError
         }
         history={history}
@@ -210,4 +317,65 @@ export function ScannerWorkspace({
       />
     </div>
   );
+}
+
+async function pollUntilTerminal(
+  getScan: (scanId: string, signal?: AbortSignal) => Promise<ScanJob>,
+  initial: ScanJob,
+  onUpdate: (scan: ScanJob) => void,
+  signal: AbortSignal,
+) {
+  let current = initial;
+  let transientErrors = 0;
+  while (!isTerminalScanState(current.status)) {
+    await abortableDelay(pollingIntervalMs, signal);
+    try {
+      current = await getScan(current.id, signal);
+      transientErrors = 0;
+      onUpdate(current);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      transientErrors += 1;
+      if (
+        !(error instanceof ScannerApiError) ||
+        error.status < 500 ||
+        transientErrors >= maximumTransientPollingErrors
+      ) {
+        throw error;
+      }
+    }
+  }
+  return current;
+}
+
+function abortableDelay(milliseconds: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, milliseconds);
+    signal.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timer);
+        reject(new DOMException('Polling aborted.', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+}
+
+function phaseLabel(phase: WorkflowPhase, scan: ScanJob | null) {
+  return {
+    idle: null,
+    creating: 'Creating secure scan…',
+    hashing: 'Calculating SHA-256…',
+    uploading: 'Uploading directly to quarantine…',
+    sealing: 'Sealing immutable upload…',
+    polling: scan ? `${lifecycleLabel(scan.status)}…` : 'Waiting for analysis…',
+    legacy_scanning: 'Running local compatibility scan…',
+  }[phase];
+}
+
+function scanErrorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : 'The hostile-content workflow could not be completed.';
 }
