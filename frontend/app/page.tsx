@@ -2,17 +2,20 @@
 
 import { Activity, ArrowUpRight, Binary, Box, Check, ChevronRight, CircleDot, Database, FlaskConical, Gauge, GitBranch, HardDrive, Menu, RefreshCw, ScanSearch, ServerCog, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type DatasetStatus = { name: string; raw_directory: string; archive_available: boolean; manifest_available: boolean; extracted_files_available: boolean; ready: boolean };
 type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number; true_negatives: number; false_positives: number; false_negatives: number; true_positives: number };
 type BaselineStatus = { available: boolean; metrics: { test: MetricSet; validation: MetricSet; features: number; best_iteration: number; created_at_utc: string } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
+type View = 'overview' | 'datasets' | 'experiments' | 'robustness' | 'runs';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
 const stages = [
@@ -21,6 +24,7 @@ const stages = [
   { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'complete' },
   { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'next' },
 ];
+const viewLabels: Record<View, string> = { overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
 
 export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
@@ -28,6 +32,8 @@ export default function Home() {
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [action, setAction] = useState<'verify' | 'smoke-test' | null>(null);
   const [notice, setNotice] = useState('Ready for the baseline model workflow.');
+  const [activeView, setActiveView] = useState<View>('overview');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     setConnection('checking');
@@ -63,6 +69,7 @@ export default function Home() {
   }
 
   const ready = dataset?.ready ?? true;
+  const selectView = (view: View) => { setActiveView(view); setMobileMenuOpen(false); };
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="noise-layer" aria-hidden="true" />
@@ -70,11 +77,11 @@ export default function Home() {
         <aside className="hidden border-r border-white/8 bg-sidebar/75 px-5 py-6 backdrop-blur-xl lg:flex lg:flex-col">
           <Brand />
           <nav className="mt-10 space-y-1" aria-label="Main navigation">
-            <NavItem icon={Gauge} label="Overview" active />
-            <NavItem icon={Database} label="Datasets" />
-            <NavItem icon={FlaskConical} label="Experiments" />
-            <NavItem icon={ScanSearch} label="Robustness" />
-            <NavItem icon={GitBranch} label="Runs" />
+            <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
+            <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
+            <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
+            <NavItem icon={ScanSearch} label="Robustness" active={activeView === 'robustness'} onSelect={() => selectView('robustness')} />
+            <NavItem icon={GitBranch} label="Runs" active={activeView === 'runs'} onSelect={() => selectView('runs')} />
           </nav>
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
@@ -86,15 +93,28 @@ export default function Home() {
         <section className="relative min-w-0 overflow-hidden">
           <div className="orb orb-one" aria-hidden="true" /><div className="orb orb-two" aria-hidden="true" />
           <header className="relative z-10 flex h-20 items-center justify-between border-b border-white/8 px-5 sm:px-8 xl:px-12">
-            <div className="flex items-center gap-3 lg:hidden"><Button variant="ghost" size="icon" aria-label="Open navigation"><Menu /></Button><Brand compact /></div>
-            <div className="hidden lg:block"><p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Research workspace</p><p className="mt-1 text-sm text-slate-300">Static malware classifier robustness</p></div>
+            <div className="flex items-center gap-3 lg:hidden"><Button variant="ghost" size="icon" aria-label="Open navigation" onClick={() => setMobileMenuOpen(true)}><Menu /></Button><Brand compact /></div>
+            <div className="hidden lg:block"><p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Research workspace / {viewLabels[activeView]}</p><p className="mt-1 text-sm text-slate-300">Static malware classifier robustness</p></div>
             <div className="flex items-center gap-3">
               <ConnectionPill state={connection} />
               <Button variant="outline" size="sm" onClick={() => void refreshStatus()} aria-label="Refresh backend status" className="border-white/10 bg-white/[0.035] text-slate-200 hover:bg-white/[0.07]"><RefreshCw className={connection === 'checking' ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></Button>
             </div>
           </header>
 
-          <div className="relative z-10 px-5 py-8 sm:px-8 xl:px-12 xl:py-10">
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetContent side="left" className="w-[290px] border-white/10 bg-sidebar/95 p-5 backdrop-blur-xl">
+              <SheetHeader className="px-0 pt-1"><SheetTitle><Brand /></SheetTitle><SheetDescription className="pt-3 text-slate-500">Navigate the research workspace</SheetDescription></SheetHeader>
+              <nav className="mt-3 space-y-1" aria-label="Mobile navigation">
+                <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
+                <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
+                <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
+                <NavItem icon={ScanSearch} label="Robustness" active={activeView === 'robustness'} onSelect={() => selectView('robustness')} />
+                <NavItem icon={GitBranch} label="Runs" active={activeView === 'runs'} onSelect={() => selectView('runs')} />
+              </nav>
+            </SheetContent>
+          </Sheet>
+
+          {activeView === 'overview' && <div className="relative z-10 px-5 py-8 sm:px-8 xl:px-12 xl:py-10">
             <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
               <div>
                 <div className="mb-3 flex items-center gap-2"><Badge className="border border-violet-300/20 bg-violet-300/10 text-violet-200">LAB / 01</Badge><span className="font-mono text-xs text-slate-500">EMBER2018 · FEATURE V2</span></div>
@@ -134,7 +154,22 @@ export default function Home() {
               <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Measure resilience under controlled feature perturbations</p></div></div>
               <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100">View implementation path <ArrowUpRight /></Button>
             </div>
-          </div>
+          </div>}
+
+          {activeView === 'datasets' && <WorkspaceView title="EMBER2018 dataset" description="Inspect local data readiness and validate the real feature pipeline." badge="DATA / 01">
+            <div className="grid gap-4 md:grid-cols-3"><MetricCard icon={Database} eyebrow="Status" value={ready ? 'Ready' : 'Attention'} detail="Official Elastic feature archive" tone="cyan" /><MetricCard icon={Binary} eyebrow="Features" value="2,381" detail="Static PE feature vector" tone="violet" /><MetricCard icon={HardDrive} eyebrow="Storage" value="8.4 GiB" detail="Local and Git-ignored" tone="emerald" /></div>
+            <Card className="glass-card mt-4"><CardHeader><CardTitle className="text-white">Dataset controls</CardTitle><CardDescription>Run checks against the local archive and extracted records.</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-3"><Button variant="outline" className="border-white/10 bg-white/[0.035]" onClick={() => void runAction('verify')} disabled={action !== null}><ShieldCheck />{action === 'verify' ? 'Verifying…' : 'Verify dataset'}</Button><Button className="bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => void runAction('smoke-test')} disabled={action !== null}><TerminalSquare />{action === 'smoke-test' ? 'Testing…' : 'Vectorization smoke test'}</Button><p className="w-full pt-2 text-sm text-slate-400">{notice}</p></CardContent></Card>
+          </WorkspaceView>}
+
+          {activeView === 'experiments' && <WorkspaceView title="Baseline experiment" description="Review model quality on held-out real EMBER2018 records." badge="MODEL / 01"><BaselineResults baseline={baseline} /></WorkspaceView>}
+
+          {activeView === 'robustness' && <WorkspaceView title="Robustness evaluation" description="Measure how performance changes under safe feature-space perturbations." badge="ROBUST / NEXT">
+            <Card className="glass-card"><CardHeader><CardTitle className="flex items-center gap-2 text-white"><ScanSearch className="size-4 text-violet-300" />Controlled perturbation study</CardTitle><CardDescription>This phase is next in the implementation plan.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><StatusTile label="Baseline locked" value="ROC-AUC 0.780" state="ready" /><StatusTile label="Perturbation suite" value="Not started" state="next" /><StatusTile label="Robust retraining" value="Queued" state="queued" /></div></CardContent></Card>
+          </WorkspaceView>}
+
+          {activeView === 'runs' && <WorkspaceView title="Experiment runs" description="Track persisted model artifacts and the latest evaluation signal." badge="RUNS / 01">
+            <Card className="glass-card"><CardHeader><CardTitle className="text-white">baseline_lightgbm</CardTitle><CardDescription>Latest real-data sample run</CardDescription><CardAction><Badge className="border border-emerald-300/20 bg-emerald-300/10 text-emerald-200">Complete</Badge></CardAction></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatusTile label="Model" value="LightGBM" state="ready" /><StatusTile label="Test records" value={baseline?.metrics?.test.samples.toLocaleString() ?? '—'} state="ready" /><StatusTile label="Best iteration" value={baseline?.metrics?.best_iteration.toString() ?? '—'} state="ready" /><StatusTile label="ROC-AUC" value={formatScore(baseline?.metrics?.test.roc_auc)} state="ready" /></CardContent></Card>
+          </WorkspaceView>}
         </section>
       </div>
     </main>
@@ -145,8 +180,17 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="flex items-center gap-3"><div className="relative grid size-9 place-items-center overflow-hidden rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><ShieldCheck className="size-[18px]" /><span className="absolute inset-x-1 bottom-0 h-px bg-cyan-200/60" /></div>{!compact && <div><p className="text-sm font-semibold tracking-[-0.02em] text-white">Aegis Lab</p><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">ML robustness</p></div>}</div>;
 }
 
-function NavItem({ icon: Icon, label, active = false }: { icon: typeof Gauge; label: string; active?: boolean }) {
-  return <button type="button" className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${active ? 'bg-cyan-300/10 text-cyan-100' : 'text-slate-500 hover:bg-white/[0.035] hover:text-slate-300'}`}><Icon className="size-4" />{label}{active && <ChevronRight className="ml-auto size-3.5" />}</button>;
+function NavItem({ icon: Icon, label, active = false, onSelect }: { icon: typeof Gauge; label: string; active?: boolean; onSelect: () => void }) {
+  return <button type="button" onClick={onSelect} aria-current={active ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${active ? 'bg-cyan-300/10 text-cyan-100' : 'text-slate-500 hover:bg-white/[0.035] hover:text-slate-300'}`}><Icon className="size-4" />{label}{active && <ChevronRight className="ml-auto size-3.5" />}</button>;
+}
+
+function WorkspaceView({ title, description, badge, children }: { title: string; description: string; badge: string; children: ReactNode }) {
+  return <div className="relative z-10 px-5 py-8 sm:px-8 xl:px-12 xl:py-10"><div className="mb-8"><Badge className="border border-violet-300/20 bg-violet-300/10 text-violet-200">{badge}</Badge><h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{title}</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">{description}</p></div>{children}</div>;
+}
+
+function StatusTile({ label, value, state }: { label: string; value: string; state: 'ready' | 'next' | 'queued' }) {
+  const tone = state === 'ready' ? 'text-emerald-300' : state === 'next' ? 'text-cyan-300' : 'text-slate-500';
+  return <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 font-mono text-sm font-medium ${tone}`}>{value}</p></div>;
 }
 
 function ConnectionPill({ state }: { state: ConnectionState }) {
