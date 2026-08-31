@@ -13,6 +13,23 @@ it does not create, execute, or distribute malware.
 
 RabbitMQ and Azure are planned after the local scientific workflow is validated.
 
+## EMBER2018 dataset
+
+The local MVP uses the official EMBER2018 feature-version-2 archive hosted by
+Elastic. It contains extracted static features rather than executable malware.
+
+```powershell
+malware-data download --raw-dir data/raw
+malware-data verify --raw-dir data/raw
+malware-data smoke-test --raw-dir data/raw
+```
+
+The acquisition command supports resumed HTTP downloads, verifies Elastic's
+published SHA-256 before extraction, and records provenance in
+`data/raw/ember2018/manifest.json`. Raw records are streamed in bounded-memory
+batches and converted to the official 2,381-value feature layout used by the
+included benchmark LightGBM model.
+
 ## Data contract
 
 The local pipeline accepts CSV and Parquet feature tables. Each table must have a
