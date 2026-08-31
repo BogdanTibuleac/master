@@ -5,9 +5,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from malware_robustness.api.app import create_app
-from malware_robustness.api.dependencies import get_dataset_service
+from malware_robustness.api.dependencies import get_dataset_service, get_experiment_service
 from malware_robustness.domain import DatasetState, VectorizationSample
-from malware_robustness.services import DatasetService
+from malware_robustness.repositories import ExperimentRepository
+from malware_robustness.services import DatasetService, ExperimentService
 
 
 class FakeDatasetRepository:
@@ -46,10 +47,13 @@ def test_dataset_service_rejects_smoke_test_when_data_is_not_ready() -> None:
         raise AssertionError("Expected an unavailable dataset to be rejected")
 
 
-def test_routes_expose_health_status_and_smoke_test() -> None:
+def test_routes_expose_health_status_and_smoke_test(tmp_path: Path) -> None:
     application = create_app()
     application.dependency_overrides[get_dataset_service] = lambda: DatasetService(
         FakeDatasetRepository()
+    )
+    application.dependency_overrides[get_experiment_service] = lambda: ExperimentService(
+        ExperimentRepository(tmp_path)
     )
     client = TestClient(application)
 

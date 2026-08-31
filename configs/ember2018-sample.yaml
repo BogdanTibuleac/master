@@ -1,10 +1,10 @@
-experiment_name: baseline_lightgbm
+experiment_name: baseline_lightgbm_representative
 random_seed: 42
 
 data:
-  train_path: data/processed/sample/train.parquet
-  validation_path: data/processed/sample/validation.parquet
-  test_path: data/processed/sample/test.parquet
+  train_path: data/processed/representative/train.parquet
+  validation_path: data/processed/representative/validation.parquet
+  test_path: data/processed/representative/test.parquet
   label_column: label
 
 model:
@@ -16,3 +16,4 @@ model:
 
 evaluation:
   decision_threshold: 0.5
+  calibrate_threshold: true

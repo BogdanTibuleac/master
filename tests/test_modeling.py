@@ -5,7 +5,11 @@ import pandas as pd
 import pytest
 
 from malware_robustness.config import DataConfig, ExperimentConfig
-from malware_robustness.modeling import evaluate_binary_classifier, train_baseline
+from malware_robustness.modeling import (
+    evaluate_binary_classifier,
+    select_f1_threshold,
+    train_baseline,
+)
 
 
 def test_evaluate_binary_classifier_calculates_expected_metrics() -> None:
@@ -22,6 +26,12 @@ def test_evaluate_binary_classifier_calculates_expected_metrics() -> None:
 def test_evaluate_binary_classifier_rejects_invalid_probabilities() -> None:
     with pytest.raises(ValueError, match="between 0 and 1"):
         evaluate_binary_classifier([0, 1], np.array([0.2, 1.1]))
+
+
+def test_select_f1_threshold_uses_validation_probabilities() -> None:
+    threshold = select_f1_threshold([0, 0, 1, 1], np.array([0.1, 0.4, 0.45, 0.9]))
+
+    assert threshold == pytest.approx(0.45)
 
 
 def test_train_baseline_writes_loadable_artifacts(tmp_path: Path) -> None:
