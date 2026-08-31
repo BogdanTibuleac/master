@@ -236,17 +236,7 @@ function BaselineResults({ baseline }: { baseline: BaselineStatus | null }) {
           <ResultMetric label="ROC-AUC" value={formatScore(metrics.roc_auc)} highlight />
           <ResultMetric label="Avg. precision" value={formatPercent(metrics.average_precision)} />
         </div>
-        <div className="overflow-hidden rounded-xl border border-white/8 bg-black/15">
-          <Table>
-            <TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Outcome</TableHead><TableHead className="text-right text-slate-500">Samples</TableHead></TableRow></TableHeader>
-            <TableBody>
-              <ConfusionRow label="True positives" value={metrics.true_positives} tone="text-emerald-300" />
-              <ConfusionRow label="True negatives" value={metrics.true_negatives} tone="text-cyan-300" />
-              <ConfusionRow label="False positives" value={metrics.false_positives} tone="text-amber-300" />
-              <ConfusionRow label="False negatives" value={metrics.false_negatives} tone="text-rose-300" />
-            </TableBody>
-          </Table>
-        </div>
+        <ConfusionMatrix metrics={metrics} />
       </div> : <div className="rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Prepare the EMBER partitions and run the baseline model to populate this panel.</div>}
     </CardContent>
   </Card>;
@@ -263,6 +253,10 @@ function RobustnessResults({ robustness }: { robustness: RobustnessStatus | null
       <MetricCard icon={Activity} eyebrow="Worst evasion" value={formatPercent(worst.evasion_rate)} detail={`${formatPercent(worst.mean_probability_drop)} confidence drop`} tone="cyan" />
     </div>
     <Card className="glass-card">
+      <CardHeader className="border-b border-white/8 pb-4"><CardTitle className="text-white">Detection-rate matrix</CardTitle><CardDescription>Rows are perturbation types; columns are perturbation intensity</CardDescription></CardHeader>
+      <CardContent className="pt-5"><RobustnessMatrix scenarios={metrics.scenarios} /></CardContent>
+    </Card>
+    <Card className="glass-card">
       <CardHeader className="border-b border-white/8 pb-4"><CardTitle className="flex items-center gap-2 text-white"><ScanSearch className="size-4 text-violet-300" />Scenario matrix</CardTitle><CardDescription>Detection impact by feature group and perturbation intensity</CardDescription><CardAction><Badge className="border border-emerald-300/20 bg-emerald-300/10 text-emerald-200">Complete</Badge></CardAction></CardHeader>
       <CardContent className="pt-4"><Table><TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Scenario</TableHead><TableHead className="text-right text-slate-500">Intensity</TableHead><TableHead className="text-right text-slate-500">Detection</TableHead><TableHead className="text-right text-slate-500">Evasion</TableHead><TableHead className="text-right text-slate-500">Confidence drop</TableHead></TableRow></TableHeader><TableBody>{metrics.scenarios.map((scenario) => <TableRow key={`${scenario.scenario}-${scenario.intensity}`} className="border-white/6 hover:bg-white/[0.025]"><TableCell className="font-medium text-slate-300">{scenarioLabel(scenario.scenario)}</TableCell><TableCell className="text-right font-mono text-slate-400">{formatPercent(scenario.intensity)}</TableCell><TableCell className="text-right font-mono text-cyan-200">{formatPercent(scenario.perturbed_detection_rate)}</TableCell><TableCell className="text-right font-mono text-amber-300">{formatPercent(scenario.evasion_rate)}</TableCell><TableCell className="text-right font-mono text-rose-300">{formatPercent(scenario.mean_probability_drop)}</TableCell></TableRow>)}</TableBody></Table></CardContent>
     </Card>
@@ -273,8 +267,24 @@ function ResultMetric({ label, value, highlight = false }: { label: string; valu
   return <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 font-mono text-xl font-semibold ${highlight ? 'text-cyan-200' : 'text-white'}`}>{value}</p></div>;
 }
 
-function ConfusionRow({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return <TableRow className="border-white/6 hover:bg-white/[0.025]"><TableCell className="text-slate-400">{label}</TableCell><TableCell className={`text-right font-mono ${tone}`}>{value.toLocaleString()}</TableCell></TableRow>;
+function ConfusionMatrix({ metrics }: { metrics: MetricSet }) {
+  const cells = [
+    { label: 'True negative', value: metrics.true_negatives, tone: 'border-cyan-300/15 bg-cyan-300/8 text-cyan-200' },
+    { label: 'False positive', value: metrics.false_positives, tone: 'border-amber-300/15 bg-amber-300/8 text-amber-200' },
+    { label: 'False negative', value: metrics.false_negatives, tone: 'border-rose-300/15 bg-rose-300/8 text-rose-200' },
+    { label: 'True positive', value: metrics.true_positives, tone: 'border-emerald-300/15 bg-emerald-300/8 text-emerald-200' },
+  ];
+  return <div><p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Confusion matrix</p><div className="grid grid-cols-[auto_1fr_1fr] gap-2"><div /><p className="pb-1 text-center text-[10px] uppercase tracking-wider text-slate-600">Predicted benign</p><p className="pb-1 text-center text-[10px] uppercase tracking-wider text-slate-600">Predicted malware</p><p className="flex items-center pr-2 text-[10px] uppercase tracking-wider text-slate-600">Actual benign</p>{cells.slice(0, 2).map((cell) => <MatrixCell key={cell.label} {...cell} />)}<p className="flex items-center pr-2 text-[10px] uppercase tracking-wider text-slate-600">Actual malware</p>{cells.slice(2).map((cell) => <MatrixCell key={cell.label} {...cell} />)}</div></div>;
+}
+
+function MatrixCell({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return <div className={`rounded-xl border p-3 text-center ${tone}`}><p className="font-mono text-xl font-semibold">{value.toLocaleString()}</p><p className="mt-1 text-[10px] uppercase tracking-wider opacity-65">{label}</p></div>;
+}
+
+function RobustnessMatrix({ scenarios }: { scenarios: RobustnessScenario[] }) {
+  const names = [...new Set(scenarios.map((item) => item.scenario))];
+  const intensities = [...new Set(scenarios.map((item) => item.intensity))].sort((a, b) => a - b);
+  return <div className="overflow-x-auto"><div className="grid min-w-[620px] gap-2" style={{ gridTemplateColumns: `minmax(190px, 1.3fr) repeat(${intensities.length}, 1fr)` }}><div /><>{intensities.map((intensity) => <p key={intensity} className="pb-1 text-center text-xs font-medium text-slate-500">{formatPercent(intensity)} intensity</p>)}</>{names.map((name) => <div key={name} className="contents"><p className="flex items-center text-sm font-medium text-slate-300">{scenarioLabel(name)}</p>{intensities.map((intensity) => { const item = scenarios.find((scenario) => scenario.scenario === name && scenario.intensity === intensity)!; const tone = item.perturbed_detection_rate >= 0.9 ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200' : item.perturbed_detection_rate >= 0.8 ? 'border-amber-300/20 bg-amber-300/10 text-amber-200' : 'border-rose-300/20 bg-rose-300/10 text-rose-200'; return <div key={intensity} className={`rounded-xl border px-3 py-4 text-center ${tone}`}><p className="font-mono text-lg font-semibold">{formatPercent(item.perturbed_detection_rate)}</p><p className="mt-1 text-[10px] uppercase tracking-wider opacity-65">{formatPercent(item.evasion_rate)} evasion</p></div>; })}</div>)}</div></div>;
 }
 
 function formatScore(value?: number) {
