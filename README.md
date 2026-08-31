@@ -122,6 +122,16 @@ The evaluation simulates bounded histogram smoothing, string-feature attenuation
 hashed-feature dropout, and their combination. It operates only on copied numeric
 feature vectors and records detection-rate, evasion-rate, and confidence changes.
 
+Train and compare the hardened model with:
+
+```powershell
+malware-harden --config configs/robust-lightgbm.yaml --artifacts-dir artifacts
+```
+
+Only the training partition is augmented. Clean validation data calibrates the
+threshold, the untouched test partition measures normal performance, and the same
+robustness suite compares baseline and hardened detection under perturbation.
+
 ## Branch delivery plan
 
 | Branch | Purpose |

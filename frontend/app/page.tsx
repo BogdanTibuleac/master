@@ -16,6 +16,7 @@ type MetricSet = { accuracy: number; precision: number; recall: number; f1: numb
 type BaselineStatus = { available: boolean; metrics: { test: MetricSet; validation: MetricSet; features: number; best_iteration: number; created_at_utc: string } | null };
 type RobustnessScenario = { scenario: string; intensity: number; malware_samples: number; baseline_detection_rate: number; perturbed_detection_rate: number; evasion_rate: number; mean_probability_drop: number };
 type RobustnessStatus = { available: boolean; metrics: { malware_samples: number; baseline_detection_rate: number; scenarios: RobustnessScenario[]; worst_case: RobustnessScenario } | null };
+type ComparisonStatus = { available: boolean; metrics: { baseline: { metrics: { test: MetricSet }; robustness: { worst_case: RobustnessScenario } }; hardened: { metrics: { test: MetricSet }; robustness: { worst_case: RobustnessScenario } }; deltas: { clean_accuracy: number; clean_roc_auc: number; worst_detection_rate: number; worst_evasion_rate: number } } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
 type View = 'overview' | 'datasets' | 'experiments' | 'robustness' | 'runs';
 
@@ -25,7 +26,7 @@ const stages = [
   { label: 'Data pipeline', detail: 'Validated, streamed & reproducible', state: 'complete' },
   { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'complete' },
   { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'complete' },
-  { label: 'Robust retraining', detail: 'Augmented training & comparison', state: 'next' },
+  { label: 'Robust retraining', detail: 'Augmented training & comparison', state: 'complete' },
 ];
 const viewLabels: Record<View, string> = { overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
 
@@ -33,6 +34,7 @@ export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
   const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
   const [robustness, setRobustness] = useState<RobustnessStatus | null>(null);
+  const [comparison, setComparison] = useState<ComparisonStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [action, setAction] = useState<'verify' | 'smoke-test' | null>(null);
   const [notice, setNotice] = useState('Ready for the baseline model workflow.');
@@ -42,15 +44,17 @@ export default function Home() {
   const refreshStatus = useCallback(async () => {
     setConnection('checking');
     try {
-      const [datasetResponse, baselineResponse, robustnessResponse] = await Promise.all([
+      const [datasetResponse, baselineResponse, robustnessResponse, comparisonResponse] = await Promise.all([
         fetch(`${apiUrl}/api/v1/datasets/ember2018/status`),
         fetch(`${apiUrl}/api/v1/experiments/baseline`),
         fetch(`${apiUrl}/api/v1/experiments/robustness`),
+        fetch(`${apiUrl}/api/v1/experiments/comparison`),
       ]);
-      if (!datasetResponse.ok || !baselineResponse.ok || !robustnessResponse.ok) throw new Error('Backend returned an error');
+      if (!datasetResponse.ok || !baselineResponse.ok || !robustnessResponse.ok || !comparisonResponse.ok) throw new Error('Backend returned an error');
       setDataset((await datasetResponse.json()) as DatasetStatus);
       setBaseline((await baselineResponse.json()) as BaselineStatus);
       setRobustness((await robustnessResponse.json()) as RobustnessStatus);
+      setComparison((await comparisonResponse.json()) as ComparisonStatus);
       setConnection('online');
     } catch {
       setConnection('offline');
@@ -91,8 +95,8 @@ export default function Home() {
           </nav>
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
-            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">80%</span><span className="text-xs text-slate-400">4 of 5 phases</span></div>
-            <Progress value={80} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
+            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">100%</span><span className="text-xs text-slate-400">5 of 5 phases</span></div>
+            <Progress value={100} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
           </div>
         </aside>
 
@@ -157,7 +161,7 @@ export default function Home() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Retrain with perturbed examples and compare resilience</p></div></div>
+              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-emerald-300/10 text-emerald-200"><Check className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Scientific MVP complete</p><p className="text-xs text-slate-500">Baseline, robustness study, and hardened comparison are reproducible</p></div></div>
               <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100">View implementation path <ArrowUpRight /></Button>
             </div>
           </div>}
@@ -170,7 +174,7 @@ export default function Home() {
           {activeView === 'experiments' && <WorkspaceView title="Baseline experiment" description="Review model quality on held-out real EMBER2018 records." badge="MODEL / 01"><BaselineResults baseline={baseline} /></WorkspaceView>}
 
           {activeView === 'robustness' && <WorkspaceView title="Robustness evaluation" description="Measure how performance changes under safe feature-space perturbations." badge="ROBUST / 01">
-            <RobustnessResults robustness={robustness} />
+            <RobustnessResults robustness={robustness} comparison={comparison} />
           </WorkspaceView>}
 
           {activeView === 'runs' && <WorkspaceView title="Experiment runs" description="Track persisted model artifacts and the latest evaluation signal." badge="RUNS / 01">
@@ -242,11 +246,12 @@ function BaselineResults({ baseline }: { baseline: BaselineStatus | null }) {
   </Card>;
 }
 
-function RobustnessResults({ robustness }: { robustness: RobustnessStatus | null }) {
+function RobustnessResults({ robustness, comparison }: { robustness: RobustnessStatus | null; comparison: ComparisonStatus | null }) {
   const metrics = robustness?.metrics;
   const worst = metrics?.worst_case;
   if (!metrics || !worst) return <Card className="glass-card"><CardContent className="py-10 text-center text-sm text-slate-500">Run the controlled robustness workflow to populate this view.</CardContent></Card>;
   return <div className="space-y-4">
+    {comparison?.metrics && <ModelComparison comparison={comparison.metrics} />}
     <div className="grid gap-4 sm:grid-cols-3">
       <MetricCard icon={ShieldCheck} eyebrow="Baseline detection" value={formatPercent(metrics.baseline_detection_rate)} detail={`${metrics.malware_samples.toLocaleString()} held-out malware records`} tone="emerald" />
       <MetricCard icon={ScanSearch} eyebrow="Worst detection" value={formatPercent(worst.perturbed_detection_rate)} detail={`${scenarioLabel(worst.scenario)} · ${formatPercent(worst.intensity)}`} tone="violet" />
@@ -261,6 +266,18 @@ function RobustnessResults({ robustness }: { robustness: RobustnessStatus | null
       <CardContent className="pt-4"><Table><TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Scenario</TableHead><TableHead className="text-right text-slate-500">Intensity</TableHead><TableHead className="text-right text-slate-500">Detection</TableHead><TableHead className="text-right text-slate-500">Evasion</TableHead><TableHead className="text-right text-slate-500">Confidence drop</TableHead></TableRow></TableHeader><TableBody>{metrics.scenarios.map((scenario) => <TableRow key={`${scenario.scenario}-${scenario.intensity}`} className="border-white/6 hover:bg-white/[0.025]"><TableCell className="font-medium text-slate-300">{scenarioLabel(scenario.scenario)}</TableCell><TableCell className="text-right font-mono text-slate-400">{formatPercent(scenario.intensity)}</TableCell><TableCell className="text-right font-mono text-cyan-200">{formatPercent(scenario.perturbed_detection_rate)}</TableCell><TableCell className="text-right font-mono text-amber-300">{formatPercent(scenario.evasion_rate)}</TableCell><TableCell className="text-right font-mono text-rose-300">{formatPercent(scenario.mean_probability_drop)}</TableCell></TableRow>)}</TableBody></Table></CardContent>
     </Card>
   </div>;
+}
+
+function ModelComparison({ comparison }: { comparison: NonNullable<ComparisonStatus['metrics']> }) {
+  const baseline = comparison.baseline;
+  const hardened = comparison.hardened;
+  const rows = [
+    { label: 'Clean accuracy', before: baseline.metrics.test.accuracy, after: hardened.metrics.test.accuracy, delta: comparison.deltas.clean_accuracy, positive: true },
+    { label: 'Clean ROC-AUC', before: baseline.metrics.test.roc_auc, after: hardened.metrics.test.roc_auc, delta: comparison.deltas.clean_roc_auc, positive: true },
+    { label: 'Worst-case detection', before: baseline.robustness.worst_case.perturbed_detection_rate, after: hardened.robustness.worst_case.perturbed_detection_rate, delta: comparison.deltas.worst_detection_rate, positive: true },
+    { label: 'Worst-case evasion', before: baseline.robustness.worst_case.evasion_rate, after: hardened.robustness.worst_case.evasion_rate, delta: comparison.deltas.worst_evasion_rate, positive: false },
+  ];
+  return <Card className="glass-card overflow-hidden border-emerald-300/10"><CardHeader className="border-b border-white/8 pb-4"><CardTitle className="flex items-center gap-2 text-white"><ShieldCheck className="size-4 text-emerald-300" />Baseline vs hardened model</CardTitle><CardDescription>Clean performance is preserved while worst-case resilience improves</CardDescription><CardAction><Badge className="border border-emerald-300/20 bg-emerald-300/10 text-emerald-200">Hardened</Badge></CardAction></CardHeader><CardContent className="pt-4"><Table><TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Metric</TableHead><TableHead className="text-right text-slate-500">Baseline</TableHead><TableHead className="text-right text-slate-500">Hardened</TableHead><TableHead className="text-right text-slate-500">Change</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => { const improved = row.positive ? row.delta >= 0 : row.delta <= 0; return <TableRow key={row.label} className="border-white/6 hover:bg-white/[0.025]"><TableCell className="font-medium text-slate-300">{row.label}</TableCell><TableCell className="text-right font-mono text-slate-500">{formatPercent(row.before)}</TableCell><TableCell className="text-right font-mono text-white">{formatPercent(row.after)}</TableCell><TableCell className={`text-right font-mono ${improved ? 'text-emerald-300' : 'text-rose-300'}`}>{formatSignedPercent(row.delta)}</TableCell></TableRow>; })}</TableBody></Table></CardContent></Card>;
 }
 
 function ResultMetric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
@@ -293,6 +310,10 @@ function formatScore(value?: number) {
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignedPercent(value: number) {
+  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)} pp`;
 }
 
 function scenarioLabel(value: string) {

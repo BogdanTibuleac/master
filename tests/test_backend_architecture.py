@@ -78,3 +78,6 @@ def test_routes_expose_health_status_and_smoke_test(tmp_path: Path) -> None:
     robustness_response = client.get("/api/v1/experiments/robustness")
     assert robustness_response.status_code == 200
     assert robustness_response.json() == {"available": False, "metrics": None}
+    comparison_response = client.get("/api/v1/experiments/comparison")
+    assert comparison_response.status_code == 200
+    assert comparison_response.json() == {"available": False, "metrics": None}
