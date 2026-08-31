@@ -12,7 +12,7 @@ it does not create, execute, or distribute malware.
 4. Measure the robustness impact and retrain with augmented data.
 5. Scan uploaded Windows PE files with the hardened model without executing or retaining them.
 
-RabbitMQ and Azure are planned after the local scientific workflow is validated.
+RabbitMQ can optionally move scan execution into a local worker. Azure remains out of scope.
 
 ## EMBER2018 dataset
 
@@ -74,6 +74,17 @@ The API is available at `http://127.0.0.1:8000`, with interactive documentation
 at `/docs`. Routes depend on services, services depend on repository contracts,
 and only repository implementations access dataset files.
 
+For asynchronous scans, start RabbitMQ, the API, and one worker together (the hardened
+model must already exist under `artifacts/robust_lightgbm/`):
+
+```powershell
+docker compose up --build rabbitmq api worker
+```
+
+The API is then available on port 8000 and RabbitMQ management on port 15672
+(`malware` / `malware-local`, for local development only). The API and worker share
+`data/scans/` for job/result metadata and read the same local model artifacts.
+
 ## Frontend dashboard
 
 The dashboard lives in `frontend/` and uses the local API URL from
@@ -104,8 +115,18 @@ PE type, architecture, section/import counts, and scan duration.
 The API exposes:
 
 - `POST /api/v1/scans` — multipart PE upload and synchronous static scan.
+- `POST /api/v1/scans/async` — validate and enqueue a multipart PE upload.
+- `GET /api/v1/scans/jobs/{job_id}` — poll queued, processing, completed, or failed state.
 - `GET /api/v1/scans` — recent metadata-only scan history.
 - `GET /api/v1/scans/{scan_id}` — one persisted scan result.
+
+Both upload endpoints require `X-Aegis-Scan: static-pe-v1`. The synchronous endpoint
+remains the broker-free fallback. In asynchronous mode RabbitMQ may persist the bounded,
+versioned work message until a worker acknowledges it; the worker does not write the
+uploaded binary to the scan volume, and only job/result metadata remains after completion.
+Direct local processes use `MALWARE_RABBITMQ_URL` (default
+`amqp://guest:guest@127.0.0.1:5672/%2F`), `MALWARE_SCAN_QUEUE` (default
+`malware.scan.v1`), and `MALWARE_RABBITMQ_RETRY_SECONDS` (default `5`).
 
 Static ML is a triage signal rather than proof that a file is safe or malicious.
 Signature reputation and isolated behavioral sandboxing remain later defense layers.

@@ -9,11 +9,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from malware_robustness.api.app import create_app
-from malware_robustness.api.dependencies import get_scan_service
+from malware_robustness.api.dependencies import get_scan_job_service, get_scan_service
+from malware_robustness.domain.scan_jobs import (
+    ScanQueueUnavailableError,
+    ScanTask,
+    ScanTaskFormatError,
+)
 from malware_robustness.domain.scans import ModelScore, ScanValidationError
 from malware_robustness.pe_features import PEFeatureExtractor
+from malware_robustness.queues.rabbitmq import decode_scan_task, encode_scan_task
+from malware_robustness.repositories.scan_jobs import ScanJobRepository
 from malware_robustness.repositories.scans import ScanRepository
+from malware_robustness.services.scan_jobs import ScanJobService
 from malware_robustness.services.scans import ScanService
+from malware_robustness.worker import run_worker
 
 
 class FakeModelRepository:
@@ -30,6 +39,23 @@ class FakeModelRepository:
             malware_probability=0.91,
             feature_contributions=contributions,
         )
+
+
+class FakeScanQueue:
+    """Capture queue publications for orchestration tests."""
+
+    def __init__(self, *, available: bool = True) -> None:
+        self.available = available
+        self.tasks: list[ScanTask] = []
+
+    def publish(self, task: ScanTask) -> None:
+        if not self.available:
+            raise ScanQueueUnavailableError("The scan queue is unavailable")
+        self.tasks.append(task)
+
+    def consume(self, handler) -> None:
+        for task in self.tasks:
+            handler(task)
 
 
 def _minimal_pe() -> bytes:
@@ -66,6 +92,14 @@ def _service(tmp_path: Path) -> ScanService:
         FakeModelRepository(),  # type: ignore[arg-type]
         PEFeatureExtractor(),
         maximum_file_size=1024 * 1024,
+    )
+
+
+def _job_service(tmp_path: Path, queue: FakeScanQueue | None = None) -> ScanJobService:
+    return ScanJobService(
+        ScanJobRepository(tmp_path / "scans" / "jobs"),
+        queue or FakeScanQueue(),
+        _service(tmp_path),
     )
 
 
@@ -152,3 +186,110 @@ def test_scan_route_requires_the_preflighted_application_header(tmp_path: Path) 
     )
 
     assert response.status_code == 403
+
+
+def test_scan_job_service_enqueues_and_processes_idempotently(tmp_path: Path) -> None:
+    queue = FakeScanQueue()
+    service = _job_service(tmp_path, queue)
+    content = _minimal_pe()
+
+    queued = service.enqueue("queued.exe", content)
+
+    assert queued["status"] == "queued"
+    assert queued["result_id"] is None
+    assert len(queue.tasks) == 1
+    assert queue.tasks[0].content == content
+    service.process(queue.tasks[0])
+    completed = service.get(queued["id"])
+    assert completed is not None
+    assert completed["status"] == "completed"
+    assert completed["result_id"] == queued["id"]
+    assert service.scan_service.get(queued["id"])["filename"] == "queued.exe"
+
+    service.process(queue.tasks[0])
+    assert len(service.scan_service.history()) == 1
+    job_json = (tmp_path / "scans" / "jobs" / f"{queued['id']}.json").read_bytes()
+    assert content not in job_json
+
+
+def test_scan_job_service_marks_publish_failures(tmp_path: Path) -> None:
+    service = _job_service(tmp_path, FakeScanQueue(available=False))
+
+    with pytest.raises(ScanQueueUnavailableError, match="unavailable"):
+        service.enqueue("queued.exe", _minimal_pe())
+
+    job_files = list((tmp_path / "scans" / "jobs").glob("*.json"))
+    assert len(job_files) == 1
+    assert '"status": "failed"' in job_files[0].read_text(encoding="utf-8")
+
+
+def test_async_scan_routes_enqueue_poll_and_retrieve_result(tmp_path: Path) -> None:
+    application = create_app()
+    queue = FakeScanQueue()
+    service = _job_service(tmp_path, queue)
+    application.dependency_overrides[get_scan_job_service] = lambda: service
+    application.dependency_overrides[get_scan_service] = lambda: service.scan_service
+    client = TestClient(application)
+
+    response = client.post(
+        "/api/v1/scans/async",
+        headers={"X-Aegis-Scan": "static-pe-v1"},
+        files={"file": ("queued.exe", _minimal_pe(), "application/octet-stream")},
+    )
+
+    assert response.status_code == 202
+    job = response.json()
+    assert job["status"] == "queued"
+    assert client.get(f"/api/v1/scans/jobs/{job['id']}").json() == job
+    service.process(queue.tasks[0])
+    completed = client.get(f"/api/v1/scans/jobs/{job['id']}").json()
+    assert completed["status"] == "completed"
+    assert client.get(f"/api/v1/scans/{completed['result_id']}").status_code == 200
+    assert client.get("/api/v1/scans/jobs/missing").status_code == 404
+
+
+def test_async_scan_route_reports_queue_outage(tmp_path: Path) -> None:
+    application = create_app()
+    application.dependency_overrides[get_scan_job_service] = lambda: _job_service(
+        tmp_path, FakeScanQueue(available=False)
+    )
+    client = TestClient(application)
+
+    response = client.post(
+        "/api/v1/scans/async",
+        headers={"X-Aegis-Scan": "static-pe-v1"},
+        files={"file": ("queued.exe", _minimal_pe(), "application/octet-stream")},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "The scan queue is unavailable"}
+
+
+def test_scan_task_envelope_round_trips_and_rejects_invalid_messages() -> None:
+    task = ScanTask(job_id="a" * 32, filename="queued.exe", content=b"MZ\x00payload")
+
+    assert decode_scan_task(encode_scan_task(task)) == task
+    with pytest.raises(ScanTaskFormatError, match="envelope"):
+        decode_scan_task(b"not-json")
+
+
+def test_worker_reconnects_after_queue_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ReconnectingQueue:
+        calls = 0
+
+        def publish(self, task: ScanTask) -> None:
+            raise AssertionError("worker must not publish")
+
+        def consume(self, handler) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise ScanQueueUnavailableError("offline")
+            raise KeyboardInterrupt
+
+    queue = ReconnectingQueue()
+    monkeypatch.setattr("malware_robustness.worker.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_worker(queue, lambda _task: None, retry_delay_seconds=1)
+
+    assert queue.calls == 2

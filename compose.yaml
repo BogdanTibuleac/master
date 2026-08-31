@@ -1,0 +1,46 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: malware
+      RABBITMQ_DEFAULT_PASS: malware-local
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: .
+    command: uvicorn malware_robustness.api.app:app --host 0.0.0.0 --port 8000
+    environment: &backend-environment
+      MALWARE_ARTIFACT_DIR: /app/artifacts
+      MALWARE_SCAN_DIR: /app/data/scans
+      MALWARE_RABBITMQ_URL: amqp://malware:malware-local@rabbitmq:5672/%2F
+      MALWARE_SCAN_QUEUE: malware.scan.v1
+    ports:
+      - "8000:8000"
+    volumes: &backend-volumes
+      - ./artifacts:/app/artifacts:ro
+      - ./data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: malware-scan-worker
+    environment: *backend-environment
+    volumes: *backend-volumes
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  rabbitmq-data:

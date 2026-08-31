@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from malware_robustness.config import load_experiment_config
+from malware_robustness.core.settings import load_backend_settings
 
 
 def test_load_experiment_config_reads_baseline_settings() -> None:
@@ -37,3 +38,15 @@ evaluation:
 
     with pytest.raises(ValueError, match="decision_threshold"):
         load_experiment_config(invalid_config)
+
+
+def test_backend_settings_load_rabbitmq_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MALWARE_RABBITMQ_URL", "amqp://scanner:secret@broker:5672/scans")
+    monkeypatch.setenv("MALWARE_SCAN_QUEUE", "scan.requests")
+    monkeypatch.setenv("MALWARE_RABBITMQ_RETRY_SECONDS", "9")
+
+    settings = load_backend_settings()
+
+    assert settings.rabbitmq_url == "amqp://scanner:secret@broker:5672/scans"
+    assert settings.scan_queue_name == "scan.requests"
+    assert settings.rabbitmq_retry_delay_seconds == 9
