@@ -68,3 +68,6 @@ def test_routes_expose_health_status_and_smoke_test() -> None:
     smoke_response = client.post("/api/v1/datasets/ember2018/smoke-test")
     assert smoke_response.status_code == 200
     assert smoke_response.json() == {"feature_count": 2381, "label": 1, "finite": True}
+    baseline_response = client.get("/api/v1/experiments/baseline")
+    assert baseline_response.status_code == 200
+    assert baseline_response.json() == {"available": False, "metrics": None}

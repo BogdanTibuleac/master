@@ -9,18 +9,21 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Progress } from '@/components/ui/progress';
 
 type DatasetStatus = { name: string; raw_directory: string; archive_available: boolean; manifest_available: boolean; extracted_files_available: boolean; ready: boolean };
+type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number };
+type BaselineStatus = { available: boolean; metrics: { test: MetricSet; validation: MetricSet; features: number; best_iteration: number; created_at_utc: string } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
 const stages = [
   { label: 'Project foundation', detail: 'Configuration & quality tooling', state: 'complete' },
   { label: 'Data pipeline', detail: 'Validated, streamed & reproducible', state: 'complete' },
-  { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'next' },
-  { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'queued' },
+  { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'complete' },
+  { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'next' },
 ];
 
 export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
+  const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [action, setAction] = useState<'verify' | 'smoke-test' | null>(null);
   const [notice, setNotice] = useState('Ready for the baseline model workflow.');
@@ -28,9 +31,13 @@ export default function Home() {
   const refreshStatus = useCallback(async () => {
     setConnection('checking');
     try {
-      const response = await fetch(`${apiUrl}/api/v1/datasets/ember2018/status`);
-      if (!response.ok) throw new Error('Backend returned an error');
-      setDataset((await response.json()) as DatasetStatus);
+      const [datasetResponse, baselineResponse] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/datasets/ember2018/status`),
+        fetch(`${apiUrl}/api/v1/experiments/baseline`),
+      ]);
+      if (!datasetResponse.ok || !baselineResponse.ok) throw new Error('Backend returned an error');
+      setDataset((await datasetResponse.json()) as DatasetStatus);
+      setBaseline((await baselineResponse.json()) as BaselineStatus);
       setConnection('online');
     } catch {
       setConnection('offline');
@@ -70,8 +77,8 @@ export default function Home() {
           </nav>
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
-            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">42%</span><span className="text-xs text-slate-400">2 of 5 phases</span></div>
-            <Progress value={42} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
+            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">60%</span><span className="text-xs text-slate-400">3 of 5 phases</span></div>
+            <Progress value={60} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
           </div>
         </aside>
 
@@ -99,10 +106,11 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-9 grid gap-4 md:grid-cols-3">
+            <div className="mt-9 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard icon={Database} eyebrow="Dataset" value={ready ? 'Ready' : 'Attention'} detail="1M PE feature records" tone="cyan" />
               <MetricCard icon={Binary} eyebrow="Feature contract" value="2,381" detail="Finite float32 inputs" tone="violet" />
               <MetricCard icon={HardDrive} eyebrow="Local footprint" value="8.4 GiB" detail="Verified & Git-ignored" tone="emerald" />
+              <MetricCard icon={Activity} eyebrow="Baseline ROC-AUC" value={baseline?.available ? formatScore(baseline.metrics?.test.roc_auc) : 'Pending'} detail={baseline?.available ? `${baseline.metrics?.test.samples.toLocaleString()} held-out samples` : 'Run malware-train to populate'} tone="cyan" />
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
@@ -113,14 +121,14 @@ export default function Home() {
               <Card className="glass-card">
                 <CardHeader className="border-b border-white/8 pb-4"><CardTitle className="flex items-center gap-2 text-white"><ServerCog className="size-4 text-violet-300" />Runtime</CardTitle><CardDescription>Local backend and data boundary</CardDescription></CardHeader>
                 <CardContent className="space-y-4 pt-5">
-                  <RuntimeRow label="API" value={connection === 'online' ? 'Online' : 'Awaiting local API'} /><RuntimeRow label="Archive" value={dataset?.archive_available === false ? 'Missing' : 'Verified'} /><RuntimeRow label="Manifest" value={dataset?.manifest_available === false ? 'Missing' : 'SHA-256'} /><RuntimeRow label="Model" value="LightGBM" />
+                  <RuntimeRow label="API" value={connection === 'online' ? 'Online' : 'Awaiting local API'} /><RuntimeRow label="Archive" value={dataset?.archive_available === false ? 'Missing' : 'Verified'} /><RuntimeRow label="Manifest" value={dataset?.manifest_available === false ? 'Missing' : 'SHA-256'} /><RuntimeRow label="Model" value={baseline?.available ? 'Trained' : 'LightGBM ready'} />
                   <div className="rounded-xl border border-white/8 bg-black/15 p-4"><div className="flex items-center gap-2 text-xs text-slate-400"><CircleDot className="size-3.5 text-emerald-300" />Latest signal</div><p className="mt-2 text-sm leading-5 text-slate-200">{notice}</p></div>
                 </CardContent>
               </Card>
             </div>
 
             <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Train and evaluate the reproducible baseline model</p></div></div>
+              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Measure resilience under controlled feature perturbations</p></div></div>
               <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100">View implementation path <ArrowUpRight /></Button>
             </div>
           </div>
@@ -155,4 +163,8 @@ function PipelineStage({ label, detail, state, index }: { label: string; detail:
 
 function RuntimeRow({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between border-b border-white/6 pb-3 text-sm last:border-0"><span className="text-slate-500">{label}</span><span className="font-mono text-xs text-slate-200">{value}</span></div>;
+}
+
+function formatScore(value?: number) {
+  return value === undefined ? '—' : value.toFixed(3);
 }
