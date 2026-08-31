@@ -1,5 +1,9 @@
 # Malware Classifier Robustness
 
+> The maintained technical documentation portal is
+> [`documentation/README.md`](documentation/README.md). It covers architecture, API contracts,
+> scanner behavior, configuration, development, deployment, security, testing, and roadmap.
+
 This project evaluates the robustness of a static malware classifier using the EMBER feature
 representation. It uses only offline research data and simulated feature-space perturbations;
 it does not create, execute, or distribute malware.
