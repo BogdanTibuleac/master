@@ -14,6 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 type DatasetStatus = { name: string; raw_directory: string; archive_available: boolean; manifest_available: boolean; extracted_files_available: boolean; ready: boolean };
 type MetricSet = { accuracy: number; precision: number; recall: number; f1: number; roc_auc: number; average_precision: number; samples: number; true_negatives: number; false_positives: number; false_negatives: number; true_positives: number };
 type BaselineStatus = { available: boolean; metrics: { test: MetricSet; validation: MetricSet; features: number; best_iteration: number; created_at_utc: string } | null };
+type RobustnessScenario = { scenario: string; intensity: number; malware_samples: number; baseline_detection_rate: number; perturbed_detection_rate: number; evasion_rate: number; mean_probability_drop: number };
+type RobustnessStatus = { available: boolean; metrics: { malware_samples: number; baseline_detection_rate: number; scenarios: RobustnessScenario[]; worst_case: RobustnessScenario } | null };
 type ConnectionState = 'checking' | 'online' | 'offline';
 type View = 'overview' | 'datasets' | 'experiments' | 'robustness' | 'runs';
 
@@ -22,13 +24,15 @@ const stages = [
   { label: 'Project foundation', detail: 'Configuration & quality tooling', state: 'complete' },
   { label: 'Data pipeline', detail: 'Validated, streamed & reproducible', state: 'complete' },
   { label: 'Baseline model', detail: 'LightGBM training & evaluation', state: 'complete' },
-  { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'next' },
+  { label: 'Robustness study', detail: 'Controlled feature perturbations', state: 'complete' },
+  { label: 'Robust retraining', detail: 'Augmented training & comparison', state: 'next' },
 ];
 const viewLabels: Record<View, string> = { overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
 
 export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
   const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
+  const [robustness, setRobustness] = useState<RobustnessStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('checking');
   const [action, setAction] = useState<'verify' | 'smoke-test' | null>(null);
   const [notice, setNotice] = useState('Ready for the baseline model workflow.');
@@ -38,13 +42,15 @@ export default function Home() {
   const refreshStatus = useCallback(async () => {
     setConnection('checking');
     try {
-      const [datasetResponse, baselineResponse] = await Promise.all([
+      const [datasetResponse, baselineResponse, robustnessResponse] = await Promise.all([
         fetch(`${apiUrl}/api/v1/datasets/ember2018/status`),
         fetch(`${apiUrl}/api/v1/experiments/baseline`),
+        fetch(`${apiUrl}/api/v1/experiments/robustness`),
       ]);
-      if (!datasetResponse.ok || !baselineResponse.ok) throw new Error('Backend returned an error');
+      if (!datasetResponse.ok || !baselineResponse.ok || !robustnessResponse.ok) throw new Error('Backend returned an error');
       setDataset((await datasetResponse.json()) as DatasetStatus);
       setBaseline((await baselineResponse.json()) as BaselineStatus);
+      setRobustness((await robustnessResponse.json()) as RobustnessStatus);
       setConnection('online');
     } catch {
       setConnection('offline');
@@ -85,8 +91,8 @@ export default function Home() {
           </nav>
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
-            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">60%</span><span className="text-xs text-slate-400">3 of 5 phases</span></div>
-            <Progress value={60} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
+            <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">80%</span><span className="text-xs text-slate-400">4 of 5 phases</span></div>
+            <Progress value={80} className="mt-3 [&_[data-slot=progress-indicator]]:bg-cyan-300" />
           </div>
         </aside>
 
@@ -151,7 +157,7 @@ export default function Home() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Measure resilience under controlled feature perturbations</p></div></div>
+              <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-violet-300/10 text-violet-200"><Box className="size-4" /></div><div><p className="text-sm font-medium text-slate-200">Next milestone</p><p className="text-xs text-slate-500">Retrain with perturbed examples and compare resilience</p></div></div>
               <Button variant="ghost" className="justify-start text-cyan-200 hover:bg-cyan-300/8 hover:text-cyan-100">View implementation path <ArrowUpRight /></Button>
             </div>
           </div>}
@@ -163,8 +169,8 @@ export default function Home() {
 
           {activeView === 'experiments' && <WorkspaceView title="Baseline experiment" description="Review model quality on held-out real EMBER2018 records." badge="MODEL / 01"><BaselineResults baseline={baseline} /></WorkspaceView>}
 
-          {activeView === 'robustness' && <WorkspaceView title="Robustness evaluation" description="Measure how performance changes under safe feature-space perturbations." badge="ROBUST / NEXT">
-            <Card className="glass-card"><CardHeader><CardTitle className="flex items-center gap-2 text-white"><ScanSearch className="size-4 text-violet-300" />Controlled perturbation study</CardTitle><CardDescription>This phase is next in the implementation plan.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><StatusTile label="Baseline locked" value="ROC-AUC 0.780" state="ready" /><StatusTile label="Perturbation suite" value="Not started" state="next" /><StatusTile label="Robust retraining" value="Queued" state="queued" /></div></CardContent></Card>
+          {activeView === 'robustness' && <WorkspaceView title="Robustness evaluation" description="Measure how performance changes under safe feature-space perturbations." badge="ROBUST / 01">
+            <RobustnessResults robustness={robustness} />
           </WorkspaceView>}
 
           {activeView === 'runs' && <WorkspaceView title="Experiment runs" description="Track persisted model artifacts and the latest evaluation signal." badge="RUNS / 01">
@@ -246,6 +252,23 @@ function BaselineResults({ baseline }: { baseline: BaselineStatus | null }) {
   </Card>;
 }
 
+function RobustnessResults({ robustness }: { robustness: RobustnessStatus | null }) {
+  const metrics = robustness?.metrics;
+  const worst = metrics?.worst_case;
+  if (!metrics || !worst) return <Card className="glass-card"><CardContent className="py-10 text-center text-sm text-slate-500">Run the controlled robustness workflow to populate this view.</CardContent></Card>;
+  return <div className="space-y-4">
+    <div className="grid gap-4 sm:grid-cols-3">
+      <MetricCard icon={ShieldCheck} eyebrow="Baseline detection" value={formatPercent(metrics.baseline_detection_rate)} detail={`${metrics.malware_samples.toLocaleString()} held-out malware records`} tone="emerald" />
+      <MetricCard icon={ScanSearch} eyebrow="Worst detection" value={formatPercent(worst.perturbed_detection_rate)} detail={`${scenarioLabel(worst.scenario)} · ${formatPercent(worst.intensity)}`} tone="violet" />
+      <MetricCard icon={Activity} eyebrow="Worst evasion" value={formatPercent(worst.evasion_rate)} detail={`${formatPercent(worst.mean_probability_drop)} confidence drop`} tone="cyan" />
+    </div>
+    <Card className="glass-card">
+      <CardHeader className="border-b border-white/8 pb-4"><CardTitle className="flex items-center gap-2 text-white"><ScanSearch className="size-4 text-violet-300" />Scenario matrix</CardTitle><CardDescription>Detection impact by feature group and perturbation intensity</CardDescription><CardAction><Badge className="border border-emerald-300/20 bg-emerald-300/10 text-emerald-200">Complete</Badge></CardAction></CardHeader>
+      <CardContent className="pt-4"><Table><TableHeader><TableRow className="border-white/8 hover:bg-transparent"><TableHead className="text-slate-500">Scenario</TableHead><TableHead className="text-right text-slate-500">Intensity</TableHead><TableHead className="text-right text-slate-500">Detection</TableHead><TableHead className="text-right text-slate-500">Evasion</TableHead><TableHead className="text-right text-slate-500">Confidence drop</TableHead></TableRow></TableHeader><TableBody>{metrics.scenarios.map((scenario) => <TableRow key={`${scenario.scenario}-${scenario.intensity}`} className="border-white/6 hover:bg-white/[0.025]"><TableCell className="font-medium text-slate-300">{scenarioLabel(scenario.scenario)}</TableCell><TableCell className="text-right font-mono text-slate-400">{formatPercent(scenario.intensity)}</TableCell><TableCell className="text-right font-mono text-cyan-200">{formatPercent(scenario.perturbed_detection_rate)}</TableCell><TableCell className="text-right font-mono text-amber-300">{formatPercent(scenario.evasion_rate)}</TableCell><TableCell className="text-right font-mono text-rose-300">{formatPercent(scenario.mean_probability_drop)}</TableCell></TableRow>)}</TableBody></Table></CardContent>
+    </Card>
+  </div>;
+}
+
 function ResultMetric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   return <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 font-mono text-xl font-semibold ${highlight ? 'text-cyan-200' : 'text-white'}`}>{value}</p></div>;
 }
@@ -260,4 +283,8 @@ function formatScore(value?: number) {
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function scenarioLabel(value: string) {
+  return value.split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
 }

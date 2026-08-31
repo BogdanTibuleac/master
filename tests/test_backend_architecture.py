@@ -75,3 +75,6 @@ def test_routes_expose_health_status_and_smoke_test(tmp_path: Path) -> None:
     baseline_response = client.get("/api/v1/experiments/baseline")
     assert baseline_response.status_code == 200
     assert baseline_response.json() == {"available": False, "metrics": None}
+    robustness_response = client.get("/api/v1/experiments/robustness")
+    assert robustness_response.status_code == 200
+    assert robustness_response.json() == {"available": False, "metrics": None}

@@ -112,6 +112,16 @@ The sample experiment calibrates its decision threshold on validation data, keep
 the held-out test set untouched until final evaluation, and preserves older run
 artifacts while the API exposes the newest completed baseline.
 
+Run the safe held-out feature-space robustness study with:
+
+```powershell
+malware-robustness --config configs/ember2018-sample.yaml --artifacts-dir artifacts
+```
+
+The evaluation simulates bounded histogram smoothing, string-feature attenuation,
+hashed-feature dropout, and their combination. It operates only on copied numeric
+feature vectors and records detection-rate, evasion-rate, and confidence changes.
+
 ## Branch delivery plan
 
 | Branch | Purpose |
