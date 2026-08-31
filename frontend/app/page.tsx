@@ -2,7 +2,7 @@
 
 import { Activity, ArrowUpRight, Binary, Check, ChevronRight, CircleDot, Database, FlaskConical, Gauge, GitBranch, HardDrive, Menu, RefreshCw, ScanSearch, ServerCog, ShieldAlert, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,14 @@ const stages = [
   { label: 'File scanning', detail: 'Safe PE extraction, inference & history', state: 'complete' },
 ];
 const viewLabels: Record<View, string> = { scan: 'Scan', overview: 'Overview', datasets: 'Datasets', experiments: 'Experiments', robustness: 'Robustness', runs: 'Runs' };
+const navigationItems = [
+  { icon: ShieldAlert, label: 'Scan', view: 'scan' },
+  { icon: Gauge, label: 'Overview', view: 'overview' },
+  { icon: Database, label: 'Datasets', view: 'datasets' },
+  { icon: FlaskConical, label: 'Experiments', view: 'experiments' },
+  { icon: ScanSearch, label: 'Robustness', view: 'robustness' },
+  { icon: GitBranch, label: 'Runs', view: 'runs' },
+] as const;
 
 export default function Home() {
   const [dataset, setDataset] = useState<DatasetStatus | null>(null);
@@ -91,14 +99,7 @@ export default function Home() {
       <div className="mx-auto grid min-h-screen max-w-[1600px] lg:grid-cols-[248px_1fr]">
         <aside className="hidden border-r border-white/8 bg-sidebar/75 px-5 py-6 backdrop-blur-xl lg:flex lg:flex-col">
           <Brand />
-          <nav className="mt-10 space-y-1" aria-label="Main navigation">
-            <NavItem icon={ShieldAlert} label="Scan" active={activeView === 'scan'} onSelect={() => selectView('scan')} />
-            <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
-            <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
-            <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
-            <NavItem icon={ScanSearch} label="Robustness" active={activeView === 'robustness'} onSelect={() => selectView('robustness')} />
-            <NavItem icon={GitBranch} label="Runs" active={activeView === 'runs'} onSelect={() => selectView('runs')} />
-          </nav>
+          <WorkspaceNavigation activeView={activeView} onSelect={selectView} className="mt-10" label="Main navigation" />
           <div className="mt-auto rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-cyan-200"><Sparkles className="size-3.5" />MVP progress</div>
             <div className="mt-3 flex items-end justify-between"><span className="font-mono text-2xl font-semibold text-white">100%</span><span className="text-xs text-slate-400">6 of 6 phases</span></div>
@@ -106,10 +107,10 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className="relative min-w-0 overflow-hidden">
+        <section id="workspace-panel" aria-label={`${viewLabels[activeView]} workspace`} className="relative min-w-0 overflow-hidden">
           <div className="orb orb-one" aria-hidden="true" /><div className="orb orb-two" aria-hidden="true" />
           <header className="relative z-10 flex h-20 items-center justify-between border-b border-white/8 px-5 sm:px-8 xl:px-12">
-            <div className="flex items-center gap-3 lg:hidden"><Button variant="ghost" size="icon" aria-label="Open navigation" onClick={() => setMobileMenuOpen(true)}><Menu /></Button><Brand compact /></div>
+            <div className="flex min-w-0 items-center gap-3 lg:hidden"><Button variant="ghost" size="icon" aria-label="Open navigation" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><Menu /></Button><Brand compact /><span className="truncate text-sm font-medium text-slate-300 max-[420px]:hidden">{viewLabels[activeView]}</span></div>
             <div className="hidden lg:block"><p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Research workspace / {viewLabels[activeView]}</p><p className="mt-1 text-sm text-slate-300">Static malware classifier robustness</p></div>
             <div className="flex items-center gap-3">
               <ConnectionPill state={connection} />
@@ -118,21 +119,14 @@ export default function Home() {
           </header>
 
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetContent side="left" className="w-[290px] border-white/10 bg-sidebar/95 p-5 backdrop-blur-xl">
+            <SheetContent side="left" className="w-[min(88vw,320px)] border-white/10 bg-sidebar/95 p-5 backdrop-blur-xl">
               <SheetHeader className="px-0 pt-1"><SheetTitle><Brand /></SheetTitle><SheetDescription className="pt-3 text-slate-500">Navigate the research workspace</SheetDescription></SheetHeader>
-              <nav className="mt-3 space-y-1" aria-label="Mobile navigation">
-                <NavItem icon={ShieldAlert} label="Scan" active={activeView === 'scan'} onSelect={() => selectView('scan')} />
-                <NavItem icon={Gauge} label="Overview" active={activeView === 'overview'} onSelect={() => selectView('overview')} />
-                <NavItem icon={Database} label="Datasets" active={activeView === 'datasets'} onSelect={() => selectView('datasets')} />
-                <NavItem icon={FlaskConical} label="Experiments" active={activeView === 'experiments'} onSelect={() => selectView('experiments')} />
-                <NavItem icon={ScanSearch} label="Robustness" active={activeView === 'robustness'} onSelect={() => selectView('robustness')} />
-                <NavItem icon={GitBranch} label="Runs" active={activeView === 'runs'} onSelect={() => selectView('runs')} />
-              </nav>
+              <WorkspaceNavigation activeView={activeView} onSelect={selectView} className="mt-3" label="Mobile navigation" />
             </SheetContent>
           </Sheet>
 
           {activeView === 'scan' && <WorkspaceView title="Scan suspicious file" description="Upload a Windows PE file for safe static analysis with the hardened malware model." badge="SCAN / 01">
-            <ScannerWorkspace apiUrl={apiUrl} connection={connection} />
+            <ScannerWorkspace apiUrl={apiUrl} connection={connection} onRetryConnection={() => void refreshStatus()} />
           </WorkspaceView>}
 
           {activeView === 'overview' && <div className="relative z-10 px-5 py-8 sm:px-8 xl:px-12 xl:py-10">
@@ -201,8 +195,21 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="flex items-center gap-3"><div className="relative grid size-9 place-items-center overflow-hidden rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><ShieldCheck className="size-[18px]" /><span className="absolute inset-x-1 bottom-0 h-px bg-cyan-200/60" /></div>{!compact && <div><p className="text-sm font-semibold tracking-[-0.02em] text-white">Aegis Lab</p><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500">ML robustness</p></div>}</div>;
 }
 
-function NavItem({ icon: Icon, label, active = false, onSelect }: { icon: typeof Gauge; label: string; active?: boolean; onSelect: () => void }) {
-  return <button type="button" onClick={onSelect} aria-current={active ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${active ? 'bg-cyan-300/10 text-cyan-100' : 'text-slate-500 hover:bg-white/[0.035] hover:text-slate-300'}`}><Icon className="size-4" />{label}{active && <ChevronRight className="ml-auto size-3.5" />}</button>;
+function WorkspaceNavigation({ activeView, onSelect, className, label }: { activeView: View; onSelect: (view: View) => void; className?: string; label: string }) {
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const keys = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    const buttons = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[data-workspace-nav-item]') ?? []);
+    const lastIndex = buttons.length - 1;
+    const targetIndex = event.key === 'Home' ? 0 : event.key === 'End' ? lastIndex : event.key === 'ArrowDown' || event.key === 'ArrowRight' ? (index + 1) % buttons.length : (index - 1 + buttons.length) % buttons.length;
+    buttons[targetIndex]?.focus();
+  }
+  return <nav className={`${className ?? ''} space-y-1`} aria-label={label}>{navigationItems.map((item, index) => <NavItem key={item.view} icon={item.icon} label={item.label} active={activeView === item.view} onSelect={() => onSelect(item.view)} onKeyDown={(event) => handleKeyDown(event, index)} />)}</nav>;
+}
+
+function NavItem({ icon: Icon, label, active = false, onSelect, onKeyDown }: { icon: typeof Gauge; label: string; active?: boolean; onSelect: () => void; onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void }) {
+  return <button type="button" data-workspace-nav-item aria-controls="workspace-panel" onClick={onSelect} onKeyDown={onKeyDown} aria-current={active ? 'page' : undefined} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${active ? 'bg-cyan-300/10 text-cyan-100' : 'text-slate-500 hover:bg-white/[0.035] hover:text-slate-300'}`}><Icon className="size-4" />{label}{active && <ChevronRight className="ml-auto size-3.5" />}</button>;
 }
 
 function WorkspaceView({ title, description, badge, children }: { title: string; description: string; badge: string; children: ReactNode }) {
