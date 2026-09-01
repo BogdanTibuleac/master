@@ -55,7 +55,7 @@ limit plus 64 KiB of envelope overhead.
 | `health.py` | Process liveness response at `GET /health` |
 | `datasets.py` | EMBER status, archive verification, and smoke test |
 | `experiments.py` | Read latest baseline, robustness, and comparison artifacts |
-| `scans.py` | Async hostile-content create/upload/seal/status/history and legacy synchronous scan |
+| `scans.py` | Async hostile-content create/upload/seal/status/history; no in-process file parser endpoint |
 
 Routes translate transport errors and status codes. They do not construct database connections,
 parse model files, or access storage directly.
@@ -74,7 +74,7 @@ parse model files, or access storage directly.
 | `services/analysis_runtime.py` | Task validation, exact object read, lifecycle transitions, extraction, and decision call |
 | `services/decision.py` | Envelope validation, model score, calibration, policy, explanation, and manifest construction |
 | `services/decision_runtime.py` | Immutable result publication and workflow completion |
-| `services/scans.py` | Local-only synchronous compatibility scanner |
+| `services/scans.py` | Historical legacy scan-result adapter; not reachable from the file-upload route |
 | `services/datasets.py` | Dataset status, verification, and smoke-test use cases |
 | `services/experiments.py` | Artifact discovery and presentation for the dashboard |
 
@@ -126,7 +126,7 @@ it impossible to represent sample bytes or feature vectors in a normal queue tas
 | `repositories/quarantine.py` | Filesystem | Private, opaque, write-once local sample storage |
 | `repositories/azure_quarantine.py` | Azure Blob | Exact-version hostile-object reads and validation |
 | `repositories/results.py` | Filesystem or Azure-compatible blob client | Canonical immutable result objects and claims |
-| `repositories/scans.py` | Filesystem | Metadata persistence for the legacy synchronous scanner |
+| `repositories/scans.py` | Filesystem | Backward-compatible read adapter for historical metadata only |
 | `repositories/datasets.py` | Filesystem | EMBER dataset status and verification adapter |
 | `repositories/experiments.py` | Filesystem | Latest completed experiment artifact discovery |
 | `repositories/decision_components.py` | Native files/in-memory logic | LightGBM model and calibrator adapters |
@@ -147,7 +147,7 @@ create-only or exact-read behavior where immutability matters.
 - creates upload grants for the selected quarantine backend;
 - uses `LocalResultRepository` for public manifests;
 - loads `artifacts/robust_lightgbm/model.txt`;
-- creates process or container extraction runner;
+- creates an explicitly configured process (fixtures only) or container extraction runner;
 - constructs the edge service and optional local auto-processing handler.
 
 ### Publisher composition

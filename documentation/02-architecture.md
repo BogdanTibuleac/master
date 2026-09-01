@@ -39,15 +39,16 @@ flowchart LR
 ```
 
 The local auto-processing profile replaces PostgreSQL, RabbitMQ, and the separate publisher
-with in-memory state and a direct call to the same analysis handler. It still launches a fresh
-child process for extraction by default.
+with in-memory state and a direct call to the same analysis handler. It is disabled until an
+extractor is explicitly configured; the same-host child-process runner requires a development-only
+unsafe acknowledgement.
 
 ## 3. Trust zones
 
 | Zone | Trust assumption | Permitted data |
 |---|---|---|
 | Browser | Untrusted client | User-selected file before upload; public scan metadata and result afterward |
-| Edge API | Internet-facing and validation-focused | Filename, declared size/type, hashes, object identity, workflow metadata; legacy mode temporarily receives multipart bytes |
+| Edge API | Internet-facing and validation-focused | Filename, declared size/type, hashes, object identity, workflow metadata; never hostile file bytes |
 | Quarantine | Hostile-content storage | Exact uploaded bytes under an opaque, server-generated object identity |
 | PostgreSQL | Trusted control plane | Workflow state, immutable content identity, events, leases, outbox rows; no file bytes or feature vectors |
 | RabbitMQ | Trusted delivery plane with a hostile-input contract | Nine allowlisted scalar metadata fields only |
@@ -55,12 +56,8 @@ child process for extraction by default.
 | Decision worker | Trusted compute | Validated feature vector, bounded evidence, pinned model and policy identities |
 | Result store | Public-result persistence | Canonical manifest only; never raw file bytes or the 2,381-value feature vector |
 
-### Legacy exception
-
-`X-Aegis-Scan: static-pe-v1` invokes a synchronous compatibility path. The edge process receives
-the multipart file in memory, scans it, stores metadata only, and does not intentionally retain
-the bytes. This path is explicitly local-only and does not provide the same parser isolation as
-the hostile-content workflow.
+There is no legacy upload exception. `X-Aegis-Scan: static-pe-v1` returns `410 Gone`; all new
+scans use the quarantine-backed `hostile-content-v1` protocol.
 
 ## 4. End-to-end asynchronous flow
 
@@ -195,7 +192,7 @@ behavior. `runtime_composition.py` is the process-level assembly point.
 | Workflow persistence | In memory | PostgreSQL |
 | Queue | Direct handler call through local outbox adapter | RabbitMQ durable queue and dead-letter queue |
 | Quarantine | Local write-once files | Local or Azure private versioned blobs |
-| Extraction | Fresh child process by default | Digest-pinned container recommended; process mode remains configurable |
+| Extraction | Explicitly configured only | Digest-pinned container with an enforced seccomp profile |
 | Result storage | Local immutable files | Local repository currently composed; Azure result repository exists but is not selected by runtime settings |
 | Restart recovery | Limited | Workflow/outbox durable; edge presentation cache and result composition still need production review |
 | Intended use | Development and demonstration | Integration and hardening basis |
@@ -207,9 +204,8 @@ behavior. `runtime_composition.py` is the process-level assembly point.
   is durable, but all response composition is not yet fully restart-safe.
 - `AzureBlobResultRepository` exists but `runtime_composition.py` currently composes
   `LocalResultRepository` unconditionally.
-- The container command applies network, filesystem, user, capability, and resource controls,
-  but does not itself pass the provided seccomp profile. Deployment must attach it explicitly or
-  the runner must be enhanced.
+- The container command validates and attaches the reviewed seccomp profile in addition to its
+  network, filesystem, user, capability, and resource controls. It still shares the host kernel.
 - No automated retention, quarantine deletion, cancellation endpoint, readiness endpoint,
   centralized metrics, tracing, or alerting is included.
 - A container reduces parser exposure but is not the same trust boundary as a microVM or a

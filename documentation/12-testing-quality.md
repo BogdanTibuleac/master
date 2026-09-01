@@ -177,7 +177,7 @@ Recommended minimum suite:
 - unit tests for response normalization, digest formatting, verdict mapping, and status parsing;
 - component tests for file validation, lifecycle, terminal errors, empty result sections, and
   collapsed navigation;
-- integration tests for create/upload/seal/poll and the narrowly scoped legacy fallback;
+- integration tests for create/upload/seal/poll and rejection of protocol downgrades;
 - Playwright tests for all six views at desktop and mobile widths;
 - accessibility checks with keyboard traversal and axe-compatible tooling;
 - contract fixtures generated from strict backend schemas;

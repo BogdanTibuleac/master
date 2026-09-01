@@ -43,7 +43,6 @@ type ScanUploadCardProps = {
   file: File | null;
   busy: boolean;
   phaseLabel: string | null;
-  modeNotice: string | null;
   onClear: () => void;
   onFileSelect: (file: File | null) => void;
   onRetryConnection: () => void;
@@ -56,7 +55,6 @@ export function ScanUploadCard({
   file,
   busy,
   phaseLabel,
-  modeNotice,
   onClear,
   onFileSelect,
   onRetryConnection,
@@ -216,21 +214,6 @@ export function ScanUploadCard({
                 Retry connection
               </Button>
             )}
-          </Alert>
-        )}
-
-        {modeNotice && (
-          <Alert
-            aria-live="polite"
-            className="border-amber-300/20 bg-amber-300/[0.06]"
-          >
-            <AlertTriangle className="text-amber-300" />
-            <AlertTitle className="text-amber-200">
-              Local compatibility mode
-            </AlertTitle>
-            <AlertDescription className="text-slate-500">
-              {modeNotice}
-            </AlertDescription>
           </Alert>
         )}
 

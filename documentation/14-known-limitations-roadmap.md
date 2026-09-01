@@ -28,10 +28,9 @@ Acceptance criteria:
 
 ### 2.2 Strong extraction isolation
 
-Move hostile parsing to an enforced hardened boundary. The preferred target is an ephemeral
-microVM or separate analysis host with no credentials, no network, read-only image, bounded
-resources, and verified image identity. At minimum, enforce the reviewed seccomp profile rather
-than only shipping it.
+The current container runner enforces the reviewed seccomp profile. The remaining target is an
+ephemeral microVM or separate analysis host with no credentials, no network, read-only image,
+bounded resources, and verified image identity.
 
 Acceptance criteria:
 
@@ -117,7 +116,7 @@ conflicts, API failover, and result corruption.
 ### 3.5 Frontend automated tests and accessibility
 
 Add unit/component/browser tests for navigation, scan lifecycle, upload failure, terminal states,
-history, responsive layout, and async-to-legacy fallback. Add keyboard, screen-reader, contrast,
+history, responsive layout, and protocol-downgrade error handling. Add keyboard, screen-reader, contrast,
 and reduced-motion acceptance tests.
 
 ### 3.6 API lifecycle operations

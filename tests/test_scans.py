@@ -250,39 +250,34 @@ def test_scan_repository_ignores_corrupt_history_entries(tmp_path: Path) -> None
     assert repository.get(corrupt_id) is None
 
 
-def test_scan_routes_create_list_and_retrieve_results(tmp_path: Path) -> None:
+def test_scan_route_retires_the_in_process_legacy_protocol(tmp_path: Path) -> None:
     application = create_app()
-    service = _service(tmp_path)
-    application.dependency_overrides[get_scan_service] = lambda: service
+    application.dependency_overrides[get_scan_service] = lambda: _service(tmp_path)
     client = TestClient(application)
 
-    created = client.post(
+    response = client.post(
         "/api/v1/scans",
         headers={"X-Aegis-Scan": "static-pe-v1"},
-        files={"file": ("suspicious.exe", _minimal_pe(), "application/octet-stream")},
+        json={
+            "filename": "suspicious.exe",
+            "size_bytes": len(_minimal_pe()),
+            "content_type": "application/octet-stream",
+        },
     )
-    assert created.status_code == 201
-    payload = created.json()
-    assert payload["filename"] == "suspicious.exe"
-    assert payload["feature_count"] == 2381
-    assert payload["binary_retained"] is False
 
-    history = client.get("/api/v1/scans").json()
-    assert history["count"] == 1
-    assert history["items"][0]["id"] == payload["id"]
-    assert client.get(f"/api/v1/scans/{payload['id']}").json() == payload
-    assert client.get("/api/v1/scans/missing").status_code == 404
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": "The in-process compatibility scanner was removed; use hostile-content-v1"
+    }
 
 
-def test_scan_openapi_preserves_the_multipart_upload_contract() -> None:
+def test_scan_openapi_documents_metadata_only_workflow_creation() -> None:
     operation = create_app().openapi()["paths"]["/api/v1/scans"]["post"]
-    multipart_schema = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
     header_parameters = {
         item["name"]: item for item in operation["parameters"] if item["in"] == "header"
     }
 
-    assert multipart_schema["required"] == ["file"]
-    assert multipart_schema["properties"]["file"]["format"] == "binary"
+    assert set(operation["requestBody"]["content"]) == {"application/json"}
     assert header_parameters["X-Aegis-Scan"]["required"] is True
     assert operation["responses"]["201"]["content"]["application/json"]
 
@@ -295,118 +290,32 @@ def test_scan_route_requires_the_preflighted_application_header(tmp_path: Path) 
     response = client.post(
         "/api/v1/scans",
         headers={"X-Aegis-Scan": "unexpected"},
-        files={"file": ("sample.exe", _minimal_pe(), "application/octet-stream")},
+        json={
+            "filename": "sample.exe",
+            "size_bytes": len(_minimal_pe()),
+            "content_type": "application/octet-stream",
+        },
     )
 
     assert response.status_code == 403
 
 
-def test_scan_route_rejects_oversized_file_and_multipart_envelope(tmp_path: Path) -> None:
-    maximum_file_size = len(_minimal_pe()) - 1
-    settings = BackendSettings(maximum_upload_bytes=maximum_file_size)
+def test_scan_route_rejects_oversized_metadata_request_before_body_parsing(tmp_path: Path) -> None:
+    settings = BackendSettings(maximum_upload_bytes=1)
     application = create_app(settings)
-    service = ScanService(
-        ScanRepository(tmp_path / "scans"),
-        FakeModelRepository(),  # type: ignore[arg-type]
-        PEFeatureExtractor(),
-        maximum_file_size=maximum_file_size,
-    )
-    application.dependency_overrides[get_scan_service] = lambda: service
-    client = TestClient(application)
-
-    file_response = client.post(
-        "/api/v1/scans",
-        headers={"X-Aegis-Scan": "static-pe-v1"},
-        files={"file": ("sample.exe", _minimal_pe(), "application/octet-stream")},
-    )
-    body_response = client.post(
-        "/api/v1/scans",
-        headers={
-            "X-Aegis-Scan": "static-pe-v1",
-            "Content-Type": "application/octet-stream",
-        },
-        content=b"x" * (settings.maximum_scan_request_bytes + 1),
-    )
-    boundary = b"bounded-test"
-    multipart_prefix = (
-        b"--"
-        + boundary
-        + b'\r\nContent-Disposition: form-data; name="file"; filename="sample.exe"\r\n\r\n'
-    )
-    multipart_suffix = b"\r\n--" + boundary + b"--\r\n"
-    streamed_response = client.post(
-        "/api/v1/scans",
-        headers={
-            "X-Aegis-Scan": "static-pe-v1",
-            "Content-Type": "multipart/form-data; boundary=bounded-test",
-        },
-        content=iter(
-            [
-                multipart_prefix + b"x" * (settings.maximum_scan_request_bytes // 2),
-                b"x" * (settings.maximum_scan_request_bytes // 2 + 2) + multipart_suffix,
-            ]
-        ),
-    )
-
-    assert file_response.status_code == 413
-    assert body_response.status_code == 413
-    assert streamed_response.status_code == 413
-    assert service.history() == []
-
-
-def test_scan_route_accepts_exactly_one_file_part(tmp_path: Path) -> None:
-    application = create_app()
-    service = _service(tmp_path)
-    application.dependency_overrides[get_scan_service] = lambda: service
     client = TestClient(application)
 
     response = client.post(
         "/api/v1/scans",
-        headers={"X-Aegis-Scan": "static-pe-v1"},
-        files=[
-            ("file", ("one.exe", _minimal_pe(), "application/octet-stream")),
-            ("extra", ("two.exe", _minimal_pe(), "application/octet-stream")),
-        ],
+        headers={
+            "X-Aegis-Scan": "hostile-content-v1",
+            "Idempotency-Key": "bounded-request",
+            "Content-Type": "application/json",
+        },
+        content=b"x" * (settings.maximum_scan_request_bytes + 1),
     )
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Malformed or excessive multipart upload"}
-    assert service.history() == []
-
-
-def test_scan_route_rejects_excess_concurrent_uploads_before_parsing(tmp_path: Path) -> None:
-    settings = BackendSettings(maximum_concurrent_scans=1)
-    application = create_app(settings)
-    extractor = BlockingExtractor()
-    service = ScanService(
-        ScanRepository(tmp_path / "scans"),
-        FakeModelRepository(),  # type: ignore[arg-type]
-        extractor,  # type: ignore[arg-type]
-        maximum_file_size=1024 * 1024,
-        maximum_concurrent_scans=2,
-    )
-    application.dependency_overrides[get_scan_service] = lambda: service
-    first_client = TestClient(application)
-    second_client = TestClient(application)
-
-    def post(client: TestClient, filename: str):
-        return client.post(
-            "/api/v1/scans",
-            headers={"X-Aegis-Scan": "static-pe-v1"},
-            files={"file": (filename, _minimal_pe(), "application/octet-stream")},
-        )
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        running = executor.submit(post, first_client, "first.exe")
-        assert extractor.entered.wait(timeout=5)
-        rejected = post(second_client, "second.exe")
-        extractor.release.set()
-        completed = running.result(timeout=5)
-
-    assert rejected.status_code == 503
-    assert rejected.headers["retry-after"] == "1"
-    assert completed.status_code == 201
-    assert [item["filename"] for item in service.history()] == ["first.exe"]
+    assert response.status_code == 413
 
 
 def test_scan_route_rejects_disallowed_browser_origin_before_scanning(tmp_path: Path) -> None:
@@ -417,8 +326,16 @@ def test_scan_route_rejects_disallowed_browser_origin_before_scanning(tmp_path: 
 
     response = client.post(
         "/api/v1/scans",
-        headers={"X-Aegis-Scan": "static-pe-v1", "Origin": "https://attacker.example"},
-        files={"file": ("sample.exe", _minimal_pe(), "application/octet-stream")},
+        headers={
+            "X-Aegis-Scan": "hostile-content-v1",
+            "Idempotency-Key": "cross-origin",
+            "Origin": "https://attacker.example",
+        },
+        json={
+            "filename": "sample.exe",
+            "size_bytes": len(_minimal_pe()),
+            "content_type": "application/octet-stream",
+        },
     )
 
     assert response.status_code == 403
@@ -434,34 +351,20 @@ def test_scan_route_allows_configured_browser_origin(tmp_path: Path) -> None:
 
     response = client.post(
         "/api/v1/scans",
-        headers={"X-Aegis-Scan": "static-pe-v1", "Origin": "http://localhost:3000"},
-        files={"file": ("sample.exe", _minimal_pe(), "application/octet-stream")},
+        headers={
+            "X-Aegis-Scan": "hostile-content-v1",
+            "Idempotency-Key": "allowed-origin",
+            "Origin": "http://localhost:3000",
+        },
+        json={
+            "filename": "sample.exe",
+            "size_bytes": len(_minimal_pe()),
+            "content_type": "application/octet-stream",
+        },
     )
 
     assert response.status_code == 201
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
-
-
-def test_scan_route_returns_fixed_error_for_unexpected_internal_failure(tmp_path: Path) -> None:
-    application = create_app()
-    service = ScanService(
-        ScanRepository(tmp_path / "scans"),
-        FailingModelRepository(),  # type: ignore[arg-type]
-        PEFeatureExtractor(),
-        maximum_file_size=1024 * 1024,
-    )
-    application.dependency_overrides[get_scan_service] = lambda: service
-    client = TestClient(application)
-
-    response = client.post(
-        "/api/v1/scans",
-        headers={"X-Aegis-Scan": "static-pe-v1"},
-        files={"file": ("sample.exe", _minimal_pe(), "application/octet-stream")},
-    )
-
-    assert response.status_code == 500
-    assert response.json() == {"detail": "The scan could not be completed safely"}
-    assert "sensitive" not in response.text
 
 
 def test_cors_settings_reject_wildcards_and_normalize_origins() -> None:

@@ -71,6 +71,8 @@ Enable local asynchronous processing and start the API:
 
 ```powershell
 $env:MALWARE_RUNTIME_AUTO_PROCESS = "true"
+$env:MALWARE_EXTRACTOR_RUNNER = "process"
+$env:MALWARE_ALLOW_UNSAFE_PROCESS_EXTRACTOR = "true"
 malware-api
 ```
 
@@ -78,7 +80,7 @@ The process listens on `127.0.0.1:8000`. This profile uses:
 
 - in-memory workflow state;
 - local write-once quarantine;
-- a fresh Python child process for extraction;
+- a same-host Python child process for controlled fixtures only;
 - local immutable result manifests.
 
 Keep this terminal running. In another terminal:
@@ -135,8 +137,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/experiments/comparison
 5. Confirm the final result displays the manifest digest, analysis release, risk, decision,
    observed indicators, limitations, and non-execution statement.
 
-Do not use uncontrolled live malware on a normal workstation. The local process boundary is for
-development, not a containment guarantee.
+Do not use uncontrolled live malware on a normal workstation. For normal local scans, use the
+Rancher Desktop container workflow in [15-rancher-desktop-local-stack.md](15-rancher-desktop-local-stack.md).
 
 ## 7. Useful development commands
 

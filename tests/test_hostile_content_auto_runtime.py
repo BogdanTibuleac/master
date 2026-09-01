@@ -103,6 +103,8 @@ def test_seal_background_pass_completes_and_exposes_immutable_manifest(
         maximum_upload_bytes=1024 * 1024,
         upload_grant_secret="local-runtime-test-secret",
         runtime_auto_process=True,
+        extractor_runner="process",
+        allow_unsafe_process_extractor=True,
         cors_origins=("http://localhost:3000",),
     )
     content = _minimal_pe()

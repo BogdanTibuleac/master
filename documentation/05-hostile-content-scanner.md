@@ -33,7 +33,7 @@
 | Public results | `data/results/` as immutable content-addressed JSON |
 | External scan-time database | None |
 | Network required while scanning locally | No |
-| Local start | `$env:MALWARE_RUNTIME_AUTO_PROCESS = "true"; malware-api` |
+| Local start | Rancher stack plus an explicitly configured host worker |
 
 ## Purpose
 
@@ -146,7 +146,8 @@ The most relevant scanner variables are:
 | `MALWARE_RUNTIME_AUTO_PROCESS` | `false` | Run the local outbox and analysis handler after seal |
 | `MALWARE_QUARANTINE_BACKEND` | `local` | `local` or `azure` |
 | `MALWARE_WORKFLOW_BACKEND` | `memory` | `memory` or `postgres` |
-| `MALWARE_EXTRACTOR_RUNNER` | `process` | `process` or `container` |
+| `MALWARE_EXTRACTOR_RUNNER` | `disabled` | `disabled`, development-only `process`, or `container` |
+| `MALWARE_EXTRACTOR_CONTAINER_CLI` | `docker` | `docker` or Rancher Desktop `nerdctl` |
 | `MALWARE_ANALYSIS_RELEASE_ID` | deterministic local SHA-256 identity | Immutable release identifier |
 | `MALWARE_FEATURE_SCHEMA_ID` | `ember-v2/2381` | Human-readable schema identity |
 | `MALWARE_BENIGN_THRESHOLD` | `0.2` | Upper boundary for likely benign |
@@ -164,11 +165,14 @@ Use this mode for development and demonstrations:
 
 ```powershell
 $env:MALWARE_RUNTIME_AUTO_PROCESS = "true"
+$env:MALWARE_EXTRACTOR_RUNNER = "process"
+$env:MALWARE_ALLOW_UNSAFE_PROCESS_EXTRACTOR = "true"
 malware-api
 ```
 
-It uses in-memory workflows, local quarantine/results, and a fresh child process. It follows the
-same create/upload/seal/result contracts but bypasses RabbitMQ. It is **development-only**.
+It uses in-memory workflows, local quarantine/results, and a same-host child process. It follows
+the same create/upload/seal/result contracts but bypasses RabbitMQ. It is **development-only** and
+must never be used for untrusted samples outside controlled fixtures.
 
 ### Distributed mode
 
@@ -208,13 +212,13 @@ Set a digest-pinned image reference:
 $env:MALWARE_EXTRACTOR_RUNNER = "container"
 $env:MALWARE_EXTRACTOR_IMAGE_DIGEST = "sha256:<64-lowercase-hex>"
 $env:MALWARE_EXTRACTOR_IMAGE_REFERENCE = "registry.example/aegis-extractor@sha256:<same-hex>"
+$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "nerdctl" # Rancher Desktop
 ```
 
 The runner uses `--pull=never`, no network, a read-only root, non-root UID/GID 65534, no Linux
-capabilities, `no-new-privileges`, PID/memory/CPU/file limits, and a `noexec` temporary filesystem.
-The repository contains `docker/extractor/seccomp-profile.json`, but the current runner does not
-automatically pass it to Docker. Attach it in deployment or enhance the runner before relying on
-that syscall control.
+capabilities, `no-new-privileges`, a validated deny-by-default seccomp profile,
+PID/memory/CPU/file limits, and a `noexec` temporary filesystem. It re-hashes the configured
+seccomp file before every launch and fails closed if the profile changes.
 
 ## Downloads and updates
 

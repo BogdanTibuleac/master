@@ -23,13 +23,8 @@ import type {
 import { isTerminalScanState } from '@/components/scanner/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
-  legacyLocalModeNotice,
-  runLegacyLocalScan,
-} from '@/lib/legacy-scanner-api';
-import {
   createIdempotencyKey,
   createScannerApi,
-  isAsyncScanContractUnavailable,
   ScannerApiError,
   sha256File,
 } from '@/lib/scanner-api';
@@ -40,8 +35,7 @@ type WorkflowPhase =
   | 'hashing'
   | 'uploading'
   | 'sealing'
-  | 'polling'
-  | 'legacy_scanning';
+  | 'polling';
 
 const pollingIntervalMs = 1_250;
 const maximumTransientPollingErrors = 5;
@@ -62,7 +56,6 @@ export function ScannerWorkspace({
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<WorkflowPhase>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState<ScanJob | null>(null);
   const [history, setHistory] = useState<ScanJob[]>([]);
   const [historyState, setHistoryState] = useState<HistoryState>('loading');
@@ -125,7 +118,6 @@ export function ScannerWorkspace({
   function chooseFile(candidate: File | null) {
     setError(null);
     setActiveScan(null);
-    setModeNotice(null);
     if (!candidate) {
       setFile(null);
       return;
@@ -166,7 +158,6 @@ export function ScannerWorkspace({
     const controller = new AbortController();
     workflowRequestRef.current = controller;
     setError(null);
-    setModeNotice(null);
     setActiveScan(null);
     setPhase('creating');
 
@@ -224,37 +215,11 @@ export function ScannerWorkspace({
       await loadHistory();
     } catch (scanError) {
       if (controller.signal.aborted) return;
-      if (isAsyncScanContractUnavailable(scanError)) {
-        await runLegacyFallback(file, controller);
-        return;
-      }
       setError(scanErrorMessage(scanError));
     } finally {
       if (workflowRequestRef.current === controller) {
         workflowRequestRef.current = null;
         setPhase('idle');
-      }
-    }
-  }
-
-  async function runLegacyFallback(
-    selectedFile: File,
-    controller: AbortController,
-  ) {
-    setModeNotice(legacyLocalModeNotice);
-    setPhase('legacy_scanning');
-    try {
-      const completed = await runLegacyLocalScan(
-        apiUrl,
-        selectedFile,
-        controller.signal,
-      );
-      setActiveScan(completed);
-      setFile(null);
-      await loadHistory();
-    } catch (fallbackError) {
-      if (!controller.signal.aborted) {
-        setError(scanErrorMessage(fallbackError));
       }
     }
   }
@@ -268,7 +233,6 @@ export function ScannerWorkspace({
           file={file}
           busy={busy}
           phaseLabel={phaseLabel(phase, activeScan)}
-          modeNotice={modeNotice}
           onClear={() => chooseFile(null)}
           onFileSelect={chooseFile}
           onRetryConnection={onRetryConnection}
@@ -370,7 +334,6 @@ function phaseLabel(phase: WorkflowPhase, scan: ScanJob | null) {
     uploading: 'Uploading directly to quarantine…',
     sealing: 'Sealing immutable upload…',
     polling: scan ? `${lifecycleLabel(scan.status)}…` : 'Waiting for analysis…',
-    legacy_scanning: 'Running local compatibility scan…',
   }[phase];
 }
 

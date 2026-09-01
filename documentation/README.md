@@ -46,6 +46,7 @@ Every document uses the following meanings:
 | [Testing and quality](12-testing-quality.md) | Maintainers, reviewers | Test coverage map, validation commands, quality gates, and gaps |
 | [Data and artifact catalog](13-data-artifact-catalog.md) | Engineering, governance | Inputs, generated files, persistence, sensitivity, and retention gaps |
 | [Known limitations and roadmap](14-known-limitations-roadmap.md) | Delivery leads, architects | Prioritized work required to evolve the MVP |
+| [Rancher Desktop local stack](15-rancher-desktop-local-stack.md) | Developers, platform engineers | Compose services, host worker, disposable extractor, and troubleshooting |
 
 ## Quick paths
 
@@ -71,9 +72,8 @@ When documentation and behavior differ, use this precedence order:
 4. This documentation.
 
 Generated OpenAPI documentation is available from a running backend at
-`http://127.0.0.1:8000/docs`. The `POST /api/v1/scans` route supports two explicitly selected
-contracts, so the generated schema cannot fully express its dual JSON/multipart behavior; the
-API reference in this directory documents that distinction.
+`http://127.0.0.1:8000/docs`. `POST /api/v1/scans` is a JSON metadata-only creation route; file
+bytes are uploaded only through the scoped quarantine capability returned by that route.
 
 ## Repository boundaries
 

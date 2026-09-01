@@ -113,7 +113,7 @@ and lifecycle from async workflows.
 | Location | Data | Control |
 |---|---|---|
 | Browser memory | Selected file, calculated SHA-256, upload grant, status/result | Cleared with page lifecycle; application does not intentionally persist it |
-| API request stream | Local upload chunks; legacy multipart bytes | Size/concurrency bounded |
+| API request stream | Scoped local quarantine upload chunks | Size/concurrency bounded; creation endpoint never receives file bytes |
 | Extractor stdin | Framed metadata and exact sample bytes | Child/container lifetime only |
 | Extractor stdout | Bounded strict feature/evidence envelope | Output size and schema bounded |
 | Worker memory | Validated feature vector, model score, manifest | Process lifetime only |

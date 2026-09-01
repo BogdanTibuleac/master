@@ -141,15 +141,11 @@ The runner enforces no network, read-only root, capability drop, no-new-privileg
 PID 64, 384 MiB memory and swap, one CPU, 64 open files, no core dumps, and a 16 MiB no-exec
 temporary filesystem by default.
 
-`docker/extractor/seccomp-profile.json` is a deny-by-default profile, but the current application
-runner does not pass a profile path to `docker run`. A label in the Dockerfile is documentation,
-not enforcement. Before production, either:
-
-1. configure an equivalent restrictive default profile in the dedicated Docker runtime;
-2. enhance the runner/deployment interface to attach this exact reviewed profile; or
-3. move extraction into a hardened microVM/separate host boundary.
-
-The third option is the strongest recommendation for adversarial parser input.
+`docker/extractor/seccomp-profile.json` is a deny-by-default profile validated by the application
+and attached to every container launch. The runner fails closed if the profile is missing, is a
+symbolic link, is malformed, lacks an allowlist, or changes after startup. A label in the Dockerfile
+is supplemental documentation, not the enforcement mechanism. A hardened microVM or separate host
+remains the stronger boundary for adversarial parser input.
 
 ## 8. Process configuration
 

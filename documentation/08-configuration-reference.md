@@ -92,8 +92,11 @@ distributed publisher/worker profile for Azure.
 | Variable | Default | Validation and purpose |
 |---|---|---|
 | `MALWARE_RUNTIME_AUTO_PROCESS` | `false` | Boolean local convenience mode; accepted true values: `1`, `true`, `yes`, `on` |
-| `MALWARE_EXTRACTOR_RUNNER` | `process` | `process` or `container` |
-| `MALWARE_EXTRACTOR_IMAGE_REFERENCE` | None | Required in container mode; must end with `@` plus configured digest |
+| `MALWARE_EXTRACTOR_RUNNER` | `disabled` | `disabled`, development-only `process`, or `container` |
+| `MALWARE_ALLOW_UNSAFE_PROCESS_EXTRACTOR` | `false` | Required acknowledgement before same-host process extraction is allowed |
+| `MALWARE_EXTRACTOR_CONTAINER_CLI` | `docker` | `docker` or `nerdctl` |
+| `MALWARE_EXTRACTOR_IMAGE_REFERENCE` | None | Required in container mode; registry digest or local immutable `sha256:` identity |
+| `MALWARE_EXTRACTOR_SECCOMP_PROFILE` | `docker/extractor/seccomp-profile.json` | Required deny-by-default seccomp profile attached at launch |
 
 Accepted false values are `0`, `false`, `no`, and `off`, case-insensitive. Any other Boolean text
 is rejected.
@@ -105,6 +108,7 @@ $digest = "sha256:<64-lowercase-hex>"
 $env:MALWARE_EXTRACTOR_RUNNER = "container"
 $env:MALWARE_EXTRACTOR_IMAGE_DIGEST = $digest
 $env:MALWARE_EXTRACTOR_IMAGE_REFERENCE = "registry.example/aegis-extractor@$digest"
+$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "nerdctl"
 ```
 
 ## 8. CORS

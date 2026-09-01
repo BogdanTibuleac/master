@@ -225,13 +225,6 @@ export function createScannerApi(
   };
 }
 
-export function isAsyncScanContractUnavailable(error: unknown) {
-  return (
-    error instanceof ScannerApiError &&
-    [404, 405, 415, 422, 501].includes(error.status)
-  );
-}
-
 export function createIdempotencyKey() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));

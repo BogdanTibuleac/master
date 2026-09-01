@@ -1,0 +1,109 @@
+name: aegis-malware
+
+x-backend-environment: &backend-environment
+  MALWARE_WORKFLOW_BACKEND: postgres
+  MALWARE_DATABASE_URL: postgresql://aegis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/aegis
+  MALWARE_RABBITMQ_URL: amqp://aegis:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}@rabbitmq:5672/%2F
+  MALWARE_RABBITMQ_QUEUE: malware.scan
+  MALWARE_QUARANTINE_BACKEND: local
+  MALWARE_DATA_DIR: /app/data/raw
+  MALWARE_SCAN_DIR: /app/data/scans
+  MALWARE_QUARANTINE_DIR: /app/data/quarantine
+  MALWARE_RESULT_DIR: /app/data/results
+  MALWARE_ARTIFACT_DIR: /app/artifacts
+  MALWARE_MAX_UPLOAD_BYTES: "26214400"
+  MALWARE_UPLOAD_GRANT_SECRET: ${MALWARE_UPLOAD_GRANT_SECRET:?set MALWARE_UPLOAD_GRANT_SECRET in .env}
+  MALWARE_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+  MALWARE_RUNTIME_AUTO_PROCESS: "false"
+  MALWARE_EXTRACTOR_RUNNER: disabled
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aegis
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: aegis
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    environment: *backend-environment
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  outbox:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    command: ["malware-outbox"]
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    environment:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+

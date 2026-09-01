@@ -43,11 +43,11 @@ split into small components under `frontend/components/scanner/`.
 
 | Component | Responsibility |
 |---|---|
-| `scanner-workspace.tsx` | State machine, file validation, hashing, API calls, polling, fallback, and composition |
+| `scanner-workspace.tsx` | State machine, file validation, hashing, API calls, polling, and composition |
 | `scan-upload-card.tsx` | File picker/drop surface and scan action |
 | `scan-lifecycle.tsx` | Current workflow phase and progress |
 | `scan-result.tsx` | Verdict, calibrated risk, evidence, release identities, and limitations |
-| `scan-history-card.tsx` | Recent async and legacy scan entries |
+| `scan-history-card.tsx` | Recent asynchronous scan entries |
 | `safety-boundary-card.tsx` | Explains quarantine, non-execution, extraction, and immutable results |
 | `verdict-badge.tsx` | Consistent decision styling |
 | `formatters.ts` | Bounded formatting helpers |
@@ -69,8 +69,6 @@ stateDiagram-v2
     Sealing --> Polling: object identity committed
     Polling --> Complete: terminal result returned
     Polling --> TerminalFailure: rejected / inconclusive / failed / expired
-    Creating --> LegacyScan: supported-contract fallback only
-    LegacyScan --> Complete
     Creating --> Error
     Hashing --> Error
     Uploading --> Error
@@ -99,15 +97,11 @@ The preferred client in `frontend/lib/scanner-api.ts` uses the hostile-content p
 Polling tolerates up to five consecutive transient retrieval errors. A normal terminal state or
 a non-transient API error stops polling.
 
-## 6. Legacy fallback
+## 6. No downgrade path
 
-`frontend/lib/legacy-scanner-api.ts` implements the local synchronous multipart protocol. The UI
-falls back only when async creation reports a contract-not-supported status (`404`, `405`, `415`,
-`422`, or `501`). It does not silently fall back after an upload, seal, or processing failure,
-because doing so could scan a different request under weaker isolation without clear intent.
-
-The compatibility request sends `X-Aegis-Scan: static-pe-v1` and one multipart field named
-`file`.
+The client has no synchronous multipart fallback. A failed create, upload, seal, or poll operation
+is shown as an error and leaves the selected file untouched in the browser. This prevents a
+transport failure from downgrading hostile content to an in-process parser.
 
 ## 7. File selection and user-visible safety
 

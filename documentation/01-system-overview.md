@@ -28,7 +28,7 @@ strict public result manifest.
 | Train hardened model | **Implemented** | Augments training data only and compares clean and perturbed performance. |
 | Upload a PE file from the dashboard | **Implemented** | Supports `.exe`, `.dll`, `.sys`, `.scr`, `.cpl`, and `.ocx` selections up to the configured limit. |
 | Asynchronous quarantine and seal workflow | **Implemented** | Create, direct upload, exact size/SHA-256 verification, queue intent, extraction, scoring, policy, result publication. |
-| Isolated static extraction | **Implemented** | Fresh child process locally; digest-pinned, networkless container runner available. |
+| Isolated static extraction | **Implemented** | Digest-pinned, networkless container runner with enforced seccomp; same-host process mode requires an explicit development-only override. |
 | Immutable result manifests | **Implemented** | Canonical JSON, content SHA-256, create-only storage, no file bytes or feature vector. |
 | Local web dashboard | **Implemented** | Scan, Overview, Datasets, Experiments, Robustness, and Runs views. |
 | PostgreSQL workflow state | **Adapter available** | Migrations and repository are implemented; infrastructure and deployment configuration are required. |
@@ -70,8 +70,8 @@ The default profile uses:
 - in-memory workflow state;
 - write-once files under `data/quarantine/`;
 - immutable result JSON under `data/results/`;
-- a fresh Python child process for extraction;
-- optional in-process delivery when `MALWARE_RUNTIME_AUTO_PROCESS=true`;
+- no automatic extraction until a runner is explicitly configured;
+- optional direct delivery when `MALWARE_RUNTIME_AUTO_PROCESS=true` and an explicit extractor is configured;
 - the frontend at `http://localhost:3000` and API at `http://127.0.0.1:8000`.
 
 This profile demonstrates the end-to-end contract with minimal infrastructure. Workflow

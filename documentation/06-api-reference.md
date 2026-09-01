@@ -25,7 +25,7 @@ Interactive OpenAPI is available at `/docs`, and the JSON schema is at `/openapi
 | `GET` | `/api/v1/experiments/baseline` | Latest completed baseline metrics |
 | `GET` | `/api/v1/experiments/robustness` | Latest completed robustness metrics |
 | `GET` | `/api/v1/experiments/comparison` | Latest baseline/hardened comparison |
-| `POST` | `/api/v1/scans` | Create async scan, or invoke explicit legacy multipart mode |
+| `POST` | `/api/v1/scans` | Create an asynchronous metadata-only scan workflow |
 | `PUT` | `/api/v1/scans/{scan_id}/content` | Local quarantine upload endpoint from a scoped grant |
 | `POST` | `/api/v1/scans/{scan_id}:seal` | Verify uploaded object and commit queue intent |
 | `GET` | `/api/v1/scans` | Recent metadata/results, maximum 100 |
@@ -33,19 +33,17 @@ Interactive OpenAPI is available at `/docs`, and the JSON schema is at `/openapi
 
 ## 3. Scan protocol selection
 
-`POST /api/v1/scans` supports two contracts selected by exactly one `X-Aegis-Scan` header:
+`POST /api/v1/scans` supports one contract selected by exactly one `X-Aegis-Scan` header:
 
 | Header value | Body | Intended use |
 |---|---|---|
 | `hostile-content-v1` | JSON | Preferred asynchronous quarantine workflow |
-| `static-pe-v1` | Multipart field `file` | Local-only synchronous compatibility workflow |
 
 Missing, duplicate, or unknown selector headers are rejected with `403`. If an `Origin` header is
 present, it must occur exactly once and match one of the configured explicit CORS origins.
 
-Because one route accepts two media types conditionally, generated OpenAPI includes the legacy
-multipart body and does not completely describe the preferred JSON body. Use this document for
-the protocol contract.
+The endpoint accepts JSON only. `static-pe-v1` has been retired and returns `410 Gone`; file bytes
+must be sent only to the short-lived scoped upload URL returned after creation.
 
 ## 4. Asynchronous hostile-content API
 
@@ -190,8 +188,8 @@ The terminal values are `complete`, `rejected`, `inconclusive`, `failed`, `cance
 GET /api/v1/scans?limit=25
 ```
 
-`limit` is from 1 to 100, default 25. The endpoint merges async workflow entries and local legacy
-scan metadata, then returns:
+`limit` is from 1 to 100, default 25. The endpoint returns asynchronous workflow entries and
+their public results, then returns:
 
 ```json
 {
@@ -262,23 +260,7 @@ $current | ConvertTo-Json -Depth 20
 
 Do not use a real sensitive or uncontrolled sample on an inadequately isolated developer host.
 
-## 6. Legacy synchronous API
-
-```http
-POST /api/v1/scans
-Content-Type: multipart/form-data
-X-Aegis-Scan: static-pe-v1
-```
-
-The form must contain exactly one field named `file` and no other fields. The response is a
-legacy `ScanResponse` with verdict, probability, basic PE metadata, static signals, and grouped
-contributions. The implementation keeps the upload in memory for the request and persists only
-scan metadata under `data/scans/`.
-
-This mode does not provide the async quarantine/extractor trust boundary and is not intended for
-production.
-
-## 7. Dataset API
+## 6. Dataset API
 
 ### Status
 

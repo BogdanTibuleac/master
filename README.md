@@ -35,9 +35,10 @@ The asynchronous path is intentionally split by trust boundary:
 - The trusted decision runtime validates the untrusted envelope, runs native LightGBM margin
   scoring, calibration and policy, then publishes a canonical content-hashed result manifest.
 
-The local auto-processing profile runs the extractor in a fresh child process so the entire
-flow can be demonstrated without RabbitMQ. It is a development convenience, not a replacement
-for the digest-pinned container or the recommended production microVM boundary.
+The local auto-processing profile is disabled until an extractor is explicitly configured. The
+same-host child-process runner is available only for controlled test fixtures with an explicit
+unsafe acknowledgement; normal scans use a digest-pinned, disposable container. A container is
+still not a replacement for a production microVM or separate hardened host.
 
 ## EMBER2018 dataset
 
@@ -122,8 +123,8 @@ The `Scan` workspace accepts `.exe`, `.dll`, `.sys`, `.scr`, `.cpl`, and `.ocx`
 files up to 25 MB. With `X-Aegis-Scan: hostile-content-v1`, the browser first creates a
 workflow, uploads to a write-once quarantine capability, and seals the object by size and
 SHA-256. Only the disposable extraction boundary parses it; neither the edge API nor RabbitMQ
-receives the executable bytes. `X-Aegis-Scan: static-pe-v1` remains an explicitly labelled,
-local-only synchronous compatibility path.
+receives the executable bytes. The prior `X-Aegis-Scan: static-pe-v1` compatibility endpoint has
+been retired and returns `410 Gone`; it cannot be used to parse uploaded bytes in the API process.
 `MALWARE_MAX_UPLOAD_BYTES` can set a 1-byte to 100-MB file limit, while
 `MALWARE_MAX_CONCURRENT_SCANS` can set 1 to 32 in-flight scans (default: 4).
 
@@ -134,7 +135,7 @@ and immutable release provenance. The manifest always records `executed: false`.
 
 The API exposes:
 
-- `POST /api/v1/scans` — create an async workflow or invoke the labelled legacy path.
+- `POST /api/v1/scans` — create an asynchronous metadata-only workflow.
 - `PUT /api/v1/scans/{scan_id}/content` — local development upload capability only.
 - `POST /api/v1/scans/{scan_id}:seal` — verify and queue one immutable object generation.
 - `GET /api/v1/scans` — recent metadata-only workflow/result history.

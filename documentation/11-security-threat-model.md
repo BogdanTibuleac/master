@@ -60,7 +60,7 @@ validates its output. The edge API does not parse file content in the preferred 
 | Oversized upload / memory exhaustion | Request-size guard, configured maximum, streaming local upload, bounded parser structures, concurrency limit | Distributed ingress/storage quotas and per-user limits are absent |
 | Path traversal / filename attacks | Server-generated opaque keys; repository paths derived from validated identities; filename is presentation metadata | Filename can still be sensitive or unsafe if exported/logged by future code |
 | Upload overwrite / TOCTOU | Create-only local object, private versioned Azure blob, exact generation, size and SHA-256 at seal and worker read | Storage configuration mistakes or privileged operator mutation remain possible |
-| Parser exploit | Fresh process; optional networkless read-only non-root container with resource limits; strict framed protocol | Child process shares host privileges locally; container shares kernel; seccomp file is not automatically applied |
+| Parser exploit | Digest-pinned networkless, read-only, non-root container with resource limits, enforced seccomp, strict framed protocol | Container shares the host kernel; same-host process mode is fixtures-only and requires explicit acknowledgement |
 | Queue used to exfiltrate content | Exact field allowlist, strict UTF-8 JSON, bounded message, no unknown/duplicate fields, DB payload constraints | Broker administrators and future schema changes require review |
 | Duplicate/replayed delivery | Idempotency key, job nonce, leases, optimistic versions, fencing, at-least-once-aware worker, immutable result claim | Edge presentation context is not fully durable/reconstructible |
 | Stale publisher/worker commit | Lease owner, expiry, fencing token, transactional checks | Clock/database operational failures still require monitoring |
@@ -94,9 +94,9 @@ bytes. It writes a bounded strict JSON frame to stdout. The trusted worker rejec
 duplicate fields, unknown fields, non-finite values, identity mismatches, and oversized output.
 
 Container controls implemented in the command are valuable, but do not make parsing safe by
-definition. The repository's seccomp profile is not attached by the current runner. Production
-should prefer a disposable microVM, a dedicated hardened analysis host, or an equivalent
-kernel-separation technology, with outbound network denied at the infrastructure layer.
+definition. The runner validates and attaches the repository seccomp profile before each launch.
+Production should still prefer a disposable microVM, a dedicated hardened analysis host, or an
+equivalent kernel-separation technology, with outbound network denied at the infrastructure layer.
 
 ## 8. Model and policy integrity
 
@@ -153,7 +153,8 @@ Required operational controls include:
 - Tenant identity is a static configuration value, not an authenticated claim.
 - No per-user/tenant quota or ingress rate limit.
 - Local process extraction is not a sufficient hostile-code boundary.
-- Container seccomp is documented but not enforced by the runner.
+- Containers still share the host kernel; a microVM or separate hardened host is required for a
+  stronger production parser boundary.
 - No automatic quarantine retention/deletion.
 
 ### Significant hardening gaps

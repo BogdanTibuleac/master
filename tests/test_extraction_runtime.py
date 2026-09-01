@@ -25,6 +25,7 @@ from malware_robustness.domain.extraction import (
 )
 from malware_robustness.domain.scan_jobs import ScanTask
 from malware_robustness.services.extraction_runtime import (
+    CommandExtractorRunner,
     ContainerExtractorRunner,
     ExtractionTaskHandler,
     decode_runner_request,
@@ -40,6 +41,7 @@ _SCHEMA_DIGEST = "sha256:" + "d" * 64
 _OBJECT_KEY = "e" * 32
 _GENERATION = "f" * 32
 _NONCE = "nonce_1234567890abcdef"
+_SECCOMP_PROFILE = Path("docker/extractor/seccomp-profile.json")
 
 
 class FakeSealedReader:
@@ -370,12 +372,62 @@ def test_result_json_frame_rejects_unknown_duplicate_and_non_finite_fields() -> 
 
 def test_digest_pinned_container_configuration_rejects_latest_and_host_paths() -> None:
     with pytest.raises(ValueError, match="pinned"):
-        ContainerExtractorRunner("registry.example/extractor:latest")
+        ContainerExtractorRunner(
+            "registry.example/extractor:latest", seccomp_profile=_SECCOMP_PROFILE
+        )
     with pytest.raises(ValueError, match="PATH-resolved"):
         ContainerExtractorRunner(
             "registry.example/extractor@" + _EXTRACTOR_DIGEST,
+            seccomp_profile=_SECCOMP_PROFILE,
             docker_binary=str(Path("/host/bin/docker")),
         )
+
+
+def test_same_host_runner_requires_explicit_unsafe_acknowledgement() -> None:
+    with pytest.raises(ValueError, match="unsafe acknowledgement"):
+        CommandExtractorRunner(("python", "-m", "example"))
+
+
+def test_container_runner_attaches_validated_seccomp_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    def fake_run(command, request, **_kwargs):
+        captured["command"] = tuple(command)
+        return ExtractorRunnerResult.inconclusive(RunnerFailureCode.UNAVAILABLE)
+
+    monkeypatch.setattr(
+        "malware_robustness.services.extraction_runtime._run_framed_process", fake_run
+    )
+    monkeypatch.setattr(
+        "malware_robustness.services.extraction_runtime._remove_container", lambda *_args: None
+    )
+    runner = ContainerExtractorRunner(
+        "registry.example/extractor@" + _EXTRACTOR_DIGEST,
+        seccomp_profile=_SECCOMP_PROFILE,
+    )
+    request = ExtractorRunnerRequest(
+        sample_digest=_task().sample_sha256,
+        job_nonce=_NONCE,
+        analysis_release_id=_RELEASE_DIGEST,
+        extractor_image_digest=_EXTRACTOR_DIGEST,
+        worker_image_digest=_WORKER_DIGEST,
+        feature_schema_id="ember-v2/2381",
+        feature_schema_digest=_SCHEMA_DIGEST,
+        content=_content(),
+    )
+
+    runner.run(request)
+
+    expected = f"--security-opt=seccomp={_SECCOMP_PROFILE.resolve()}"
+    assert expected in captured["command"]
+
+
+def test_container_runner_allows_a_local_immutable_image_identity() -> None:
+    runner = ContainerExtractorRunner(_EXTRACTOR_DIGEST, seccomp_profile=_SECCOMP_PROFILE)
+
+    assert runner._image_reference == _EXTRACTOR_DIGEST
 
 
 def test_contracts_reject_latest_identities_and_raw_byte_iterables() -> None:
