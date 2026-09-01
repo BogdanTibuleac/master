@@ -36,6 +36,7 @@ COPY --chown=0:0 src/malware_robustness/pe_features.py /usr/local/lib/python3.12
 COPY --chown=0:0 src/malware_robustness/domain/__init__.py /usr/local/lib/python3.12/site-packages/malware_robustness/domain/__init__.py
 COPY --chown=0:0 src/malware_robustness/domain/analysis.py /usr/local/lib/python3.12/site-packages/malware_robustness/domain/analysis.py
 COPY --chown=0:0 src/malware_robustness/domain/extraction.py /usr/local/lib/python3.12/site-packages/malware_robustness/domain/extraction.py
+COPY --chown=0:0 src/malware_robustness/domain/scan_jobs.py /usr/local/lib/python3.12/site-packages/malware_robustness/domain/scan_jobs.py
 COPY --chown=0:0 src/malware_robustness/domain/scans.py /usr/local/lib/python3.12/site-packages/malware_robustness/domain/scans.py
 COPY --chown=0:0 src/malware_robustness/services/__init__.py /usr/local/lib/python3.12/site-packages/malware_robustness/services/__init__.py
 COPY --chown=0:0 src/malware_robustness/services/extraction_runtime.py /usr/local/lib/python3.12/site-packages/malware_robustness/services/extraction_runtime.py

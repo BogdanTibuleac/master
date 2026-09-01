@@ -21,7 +21,7 @@ host-privileged process and weaken the hostile-content boundary.
 | `rabbitmq` | Long-running container, ports `5672` and `15672` | Metadata-only task delivery |
 | `outbox` | Long-running container | Fenced transactional-outbox publisher |
 | `malware-worker` | Host process | Reads exact quarantined object, launches extractor, validates envelope, scores, and writes result |
-| extractor | Short-lived Rancher `nerdctl` container | Parses one sample with no network, no capabilities, read-only root, non-root UID, resource limits, and seccomp |
+| extractor | Short-lived Rancher Docker container | Parses one sample with no network, no capabilities, read-only root, non-root UID, resource limits, and seccomp |
 
 The extractor appears in Rancher Desktop only during a scan. It is removed immediately after the
 framed extraction result is collected, whether the scan succeeds or fails.
@@ -29,15 +29,15 @@ framed extraction result is collected, whether the scan succeeds or fails.
 ## Prerequisites
 
 1. Start Rancher Desktop and wait until its container engine is running.
-2. Ensure its `nerdctl` client can reach the engine:
+2. Ensure its Docker client can reach the engine:
 
    ```powershell
-   & "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe" info
+   & "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\docker.exe" version
    ```
 
-   If this reports that `/run/k3s/containerd/containerd.sock` is unavailable, Rancher Desktop has
-   not finished starting its container runtime. Start or reset the runtime from Rancher Desktop,
-   then rerun the command. The repository cannot start containers until that succeeds.
+   If the server version is absent, Rancher Desktop has not finished starting its Moby container
+   runtime. Start or reset the runtime from Rancher Desktop, then rerun the command. The
+   repository cannot start containers until that succeeds.
 3. Install Python 3.11+ and Node.js 22+ for the host worker and local diagnostics.
 4. Place the approved model at `artifacts/robust_lightgbm/model.txt`. The stack can start without
    it, but a worker cannot complete a scan without a compatible model artifact.
@@ -50,9 +50,9 @@ From the repository root:
 Copy-Item .env.example .env
 # Replace all placeholder values in .env with local secrets before starting.
 
-$rdNerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
-& $rdNerdctl compose -f compose.yaml up --build -d
-& $rdNerdctl compose -f compose.yaml ps
+$rdDocker = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\docker.exe"
+& $rdDocker compose -f compose.yaml up --build -d
+& $rdDocker compose -f compose.yaml ps
 ```
 
 Open the dashboard at `http://localhost:3000`, API health at
@@ -68,9 +68,9 @@ volume reruns `db/migrations/` automatically.
 Build the extractor image locally after Rancher Desktop is ready:
 
 ```powershell
-$rdNerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
-& $rdNerdctl build --tag aegis-extractor:local --file docker/extractor/Dockerfile .
-$extractorDigest = (& $rdNerdctl image inspect --format '{{.Id}}' aegis-extractor:local).Trim()
+$rdDocker = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\docker.exe"
+& $rdDocker build --tag aegis-extractor:local --file docker/extractor/Dockerfile .
+$extractorDigest = (& $rdDocker image inspect --format '{{.Id}}' aegis-extractor:local).Trim()
 $extractorDigest
 ```
 
@@ -99,7 +99,7 @@ $env:MALWARE_QUARANTINE_DIR = (Resolve-Path data\quarantine)
 $env:MALWARE_RESULT_DIR = (Resolve-Path data\results)
 $env:MALWARE_ARTIFACT_DIR = (Resolve-Path artifacts)
 $env:MALWARE_EXTRACTOR_RUNNER = "container"
-$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "nerdctl"
+$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "docker"
 $env:MALWARE_EXTRACTOR_IMAGE_DIGEST = $extractorDigest
 $env:MALWARE_EXTRACTOR_IMAGE_REFERENCE = $extractorDigest
 $env:MALWARE_EXTRACTOR_SECCOMP_PROFILE = (Resolve-Path docker\extractor\seccomp-profile.json)
@@ -115,9 +115,9 @@ untrusted samples.
 ## Verification and operations
 
 ```powershell
-& $rdNerdctl compose -f compose.yaml ps
-& $rdNerdctl ps -a
-& $rdNerdctl compose -f compose.yaml logs --tail 100 api outbox
+& $rdDocker compose -f compose.yaml ps
+& $rdDocker ps -a
+& $rdDocker compose -f compose.yaml logs --tail 100 api outbox
 ```
 
 When an upload has been sealed, the scanner history should move from `awaiting_upload` to
@@ -127,10 +127,9 @@ should contain lifecycle diagnostics, never raw sample bytes, file contents, or 
 To stop the long-running local services while preserving PostgreSQL and RabbitMQ volumes:
 
 ```powershell
-& $rdNerdctl compose -f compose.yaml down
+& $rdDocker compose -f compose.yaml down
 ```
 
 Do not remove volumes or `data/` directories as routine cleanup: they contain workflow state,
 quarantine objects, results, and potentially sensitive local samples. Follow the retention policy
 before deleting them.
-

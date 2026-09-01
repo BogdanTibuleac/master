@@ -108,7 +108,7 @@ $digest = "sha256:<64-lowercase-hex>"
 $env:MALWARE_EXTRACTOR_RUNNER = "container"
 $env:MALWARE_EXTRACTOR_IMAGE_DIGEST = $digest
 $env:MALWARE_EXTRACTOR_IMAGE_REFERENCE = "registry.example/aegis-extractor@$digest"
-$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "nerdctl"
+$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "docker"
 ```
 
 ## 8. CORS

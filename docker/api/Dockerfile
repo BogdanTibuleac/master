@@ -8,6 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 aegis && useradd --uid 10001 --gid 10001 --create-home aegis
 
 COPY pyproject.toml README.md ./
@@ -20,4 +24,3 @@ RUN mkdir -p /app/data/raw /app/data/scans /app/data/quarantine /app/data/result
 USER 10001:10001
 EXPOSE 8000
 CMD ["uvicorn", "malware_robustness.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
-

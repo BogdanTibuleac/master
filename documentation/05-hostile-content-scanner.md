@@ -147,7 +147,7 @@ The most relevant scanner variables are:
 | `MALWARE_QUARANTINE_BACKEND` | `local` | `local` or `azure` |
 | `MALWARE_WORKFLOW_BACKEND` | `memory` | `memory` or `postgres` |
 | `MALWARE_EXTRACTOR_RUNNER` | `disabled` | `disabled`, development-only `process`, or `container` |
-| `MALWARE_EXTRACTOR_CONTAINER_CLI` | `docker` | `docker` or Rancher Desktop `nerdctl` |
+| `MALWARE_EXTRACTOR_CONTAINER_CLI` | `docker` | `docker` (Rancher Desktop Moby engine) or `nerdctl` (containerd engine) |
 | `MALWARE_ANALYSIS_RELEASE_ID` | deterministic local SHA-256 identity | Immutable release identifier |
 | `MALWARE_FEATURE_SCHEMA_ID` | `ember-v2/2381` | Human-readable schema identity |
 | `MALWARE_BENIGN_THRESHOLD` | `0.2` | Upper boundary for likely benign |
@@ -212,7 +212,7 @@ Set a digest-pinned image reference:
 $env:MALWARE_EXTRACTOR_RUNNER = "container"
 $env:MALWARE_EXTRACTOR_IMAGE_DIGEST = "sha256:<64-lowercase-hex>"
 $env:MALWARE_EXTRACTOR_IMAGE_REFERENCE = "registry.example/aegis-extractor@sha256:<same-hex>"
-$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "nerdctl" # Rancher Desktop
+$env:MALWARE_EXTRACTOR_CONTAINER_CLI = "docker" # Rancher Desktop Moby engine
 ```
 
 The runner uses `--pull=never`, no network, a read-only root, non-root UID/GID 65534, no Linux

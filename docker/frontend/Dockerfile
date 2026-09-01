@@ -14,9 +14,8 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app ./
+COPY --chown=node:node --from=build /app ./
 
 USER node
 EXPOSE 3000
 CMD ["npm", "run", "start", "--", "--ip", "0.0.0.0", "--port", "3000"]
-
